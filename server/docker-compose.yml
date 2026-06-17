@@ -1,0 +1,33 @@
+# Local infra for the Shreevan CRM backend.
+#   docker compose up -d        # start Postgres (+ Redis for the later jobs phase)
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: shreevan_pg
+    environment:
+      POSTGRES_USER: shreevan
+      POSTGRES_PASSWORD: shreevan
+      POSTGRES_DB: shreevan_crm
+    ports:
+      - "5432:5432"
+    volumes:
+      - shreevan_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shreevan -d shreevan_crm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Reserved for BullMQ background jobs (SLA evaluation, webhook processing) —
+  # a documented next phase. The API boots without it today.
+  redis:
+    image: redis:7-alpine
+    container_name: shreevan_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - shreevan_redis_data:/data
+
+volumes:
+  shreevan_pg_data:
+  shreevan_redis_data:

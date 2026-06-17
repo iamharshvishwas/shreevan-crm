@@ -1,0 +1,90 @@
+/* Shreevan Wellness — design tokens
+ * Combined from the Shreevan Wellness Design System
+ * (tokens/fonts.css + colors.css + typography.css + spacing.css).
+ * "Sacred Forest, Flowing River, Clear Mind"
+ */
+
+@import url("https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@400;500;600;700&display=swap");
+
+:root {
+  /* ---- Core palette (raw) ---- */
+  --sw-forest-900: #173d32;
+  --sw-forest-700: #315a49;
+  --sw-moss-600:   #55745c;
+  --sw-river-600:  #397684;
+  --sw-sand-050:   #f5f0e6;
+  --sw-mist-100:   #e8f0ec;
+  --sw-clay-600:   #a95f45;
+  --sw-gold-500:   #b58b3a;
+  --sw-sun-500:    #f59e0b; /* logo flower centre / inner-light accent ONLY */
+  --sw-ink-900:    #1d2924;
+  --sw-stone-600:  #5e6863;
+  --sw-white:      #ffffff;
+
+  /* Tints & shades */
+  --sw-forest-950: #0f2a22;
+  --sw-forest-800: #234739;
+  --sw-forest-600: #3d6b56;
+  --sw-moss-100:   #dde6df;
+  --sw-river-100:  #dbe8eb;
+  --sw-river-700:  #2d5f6b;
+  --sw-clay-100:   #f0dfd7;
+  --sw-gold-100:   #efe3ca;
+  --sw-sand-100:   #ece4d3;
+  --sw-line-soft:  #e3dccb;
+  --sw-line-mist:  #d3e0d8;
+
+  /* ---- Functional ---- */
+  --sw-success:     #2e6a4d;
+  --sw-information: #2f6680;
+  --sw-warning:     #806019;
+  --sw-error:       #9e3f3f;
+  --sw-success-bg:     #e4efe8;
+  --sw-information-bg: #e0ebef;
+  --sw-warning-bg:     #f1e8d3;
+  --sw-error-bg:       #f2e0e0;
+
+  /* ---- Semantic aliases ---- */
+  --color-brand:        var(--sw-forest-900);
+  --color-brand-strong: var(--sw-forest-950);
+  --color-brand-soft:   var(--sw-forest-700);
+  --text-primary:       var(--sw-ink-900);
+  --text-secondary:     var(--sw-stone-600);
+  --text-on-brand:      var(--sw-white);
+  --text-link:          var(--sw-river-600);
+  --surface-page:       var(--sw-sand-050);
+  --surface-card:       var(--sw-white);
+  --surface-panel:      var(--sw-mist-100);
+  --surface-brand:      var(--sw-forest-900);
+  --border-default:     var(--sw-line-soft);
+  --border-on-mist:     var(--sw-line-mist);
+  --border-focus:       var(--sw-river-600);
+
+  /* ---- Type ---- */
+  --font-heading: "Lora", Georgia, "Times New Roman", serif;
+  --font-body:    "Inter", system-ui, Arial, sans-serif;
+
+  /* ---- Spacing / shape / elevation ---- */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  24px;
+  --space-6:  32px;
+  --space-7:  48px;
+  --space-8:  64px;
+
+  --radius-card:    14px;
+  --radius-input:   8px;
+  --radius-callout: 8px;
+  --radius-pill:    999px;
+
+  --shadow-sm: 0 1px 2px rgba(23, 61, 50, 0.06);
+  --shadow-md: 0 4px 14px rgba(23, 61, 50, 0.08);
+  --shadow-lg: 0 12px 32px rgba(23, 61, 50, 0.10);
+
+  --ease-calm: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --dur-fast:  160ms;
+  --dur-base:  240ms;
+  --dur-slow:  420ms;
+}

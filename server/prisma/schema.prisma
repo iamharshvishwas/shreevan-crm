@@ -1,0 +1,741 @@
+// Shreevan Wellness CRM — PostgreSQL schema (Prisma).
+//
+// Domain rules encoded here:
+//  - Contact / ContactIdentity / Enquiry / Conversation / Message / Lead are
+//    distinct entities. A message is not an enquiry; an enquiry is not a lead.
+//  - One Contact -> many ContactIdentity (one per channel handle).
+//  - Money is stored as integer minor units (cents/paise) + ISO currency. USD
+//    and INR are never combined in the schema.
+//  - All timestamps are UTC (Prisma DateTime). IST/customer-local is derived at
+//    the API edge.
+//  - Inbound provider events are immutable and deduplicated via unique
+//    (connection, externalEventId) and (connection, externalMessageId).
+//  - first-touch source is stored separately from the current conversation channel.
+//  - Only administrative health-screening / eligibility statuses are stored.
+//
+// Modeling note: high-volume "actor" references on history/audit rows are stored
+// as plain UUID columns (e.g. byUserId) rather than FK relations, to avoid a
+// dozen back-relations on User. Owner relations that are queried/joined (enquiry,
+// lead, task, call owner; sessions; notifications) ARE modeled as FKs.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  RELATIONSHIP
+  MARKETING
+  OPERATIONS
+}
+
+enum Channel {
+  INSTAGRAM
+  FACEBOOK
+  WHATSAPP
+  EMAIL
+  WEBSITE_FORM
+  WEBSITE_CHAT
+  PHONE
+  WALKIN
+  REFERRAL
+  GOOGLE_BUSINESS // attribution / first-touch only — no direct messaging
+}
+
+enum EnquiryStatus {
+  NEEDS_REPLY
+  WAITING_FOR_CUSTOMER
+  RESOLVED
+  SPAM
+}
+
+enum Priority {
+  HIGH
+  NORMAL
+  LOW
+}
+
+enum SlaState {
+  NONE
+  ON_TRACK
+  WARNING
+  BREACHED
+  COMPLETED
+  PAUSED
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+  INTERNAL
+}
+
+enum DeliveryState {
+  RECEIVED
+  SENT
+  LOGGED
+  PENDING
+  FAILED
+}
+
+enum Temperature {
+  HOT
+  WARM
+  COLD
+}
+
+enum ConnectionStatus {
+  CONNECTED
+  SIMULATED
+  TOKEN_EXPIRING
+  DISCONNECTED
+  NOT_CONFIGURED
+}
+
+enum InboundEventStatus {
+  PROCESSED
+  DUPLICATE
+  FAILED
+  PENDING_REVIEW
+}
+
+enum Currency {
+  USD
+  INR
+}
+
+enum HealthScreeningStatus {
+  REQUIRED
+  COMPLETED
+}
+
+enum EligibilityStatus {
+  PENDING
+  IN_REVIEW
+  APPROVED
+}
+
+enum TaskStatus {
+  OPEN
+  DONE
+}
+
+enum CallStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  DEPOSIT
+  PAID_IN_FULL
+}
+
+enum OnboardingStatus {
+  NOT_STARTED
+  WELCOME_PACK_PENDING
+  TRAVEL_PENDING
+  SCREENING_COMPLETED
+  READY
+}
+
+enum MergeStatus {
+  PENDING
+  DISMISSED
+  MERGED
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+// ---------------------------------------------------------------------------
+// Identity & access
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(RELATIONSHIP)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions        RefreshSession[]
+  resetTokens     PasswordResetToken[]
+  notifications   Notification[]
+  ownedEnquiries  Enquiry[]       @relation("EnquiryOwner")
+  ownedLeads      Lead[]          @relation("LeadOwner")
+  ownedTasks      Task[]          @relation("TaskOwner")
+  ownedCalls      DiscoveryCall[] @relation("CallOwner")
+
+  @@index([role])
+}
+
+model RefreshSession {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  userAgent String?
+  ip        String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Contacts & identities
+// ---------------------------------------------------------------------------
+
+model Contact {
+  id               String   @id @default(uuid())
+  name             String
+  country          String?
+  timezone         String? // IANA, e.g. Asia/Kolkata
+  language         String?
+  preferredContact String?
+  firstTouchSource Channel
+  version          Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  identities    ContactIdentity[]
+  conversations Conversation[]
+  enquiries     Enquiry[]
+  leads         Lead[]
+  tasks         Task[]
+  calls         DiscoveryCall[]
+  bookings      Booking[]
+  customer      ConfirmedCustomer?
+
+  @@index([country])
+}
+
+model ContactIdentity {
+  id               String   @id @default(uuid())
+  contactId        String
+  contact          Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  channel          Channel
+  handle           String
+  normalizedHandle String // lower/trimmed email or E.164 phone or provider id
+  displayName      String?
+  verified         Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  @@unique([channel, normalizedHandle])
+  @@index([contactId])
+}
+
+model ContactMergeSuggestion {
+  id           String      @id @default(uuid())
+  contactAId   String
+  contactBId   String
+  confidence   Float
+  evidence     String[]
+  status       MergeStatus @default(PENDING)
+  createdAt    DateTime    @default(now())
+
+  @@unique([contactAId, contactBId])
+}
+
+model ContactMergeAudit {
+  id              String   @id @default(uuid())
+  keptContactId   String
+  mergedContactId String
+  actorId         String?
+  evidence        Json?
+  createdAt       DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Channels, inbound events, conversations & messages
+// ---------------------------------------------------------------------------
+
+model ChannelConnection {
+  id              String           @id @default(uuid())
+  channel         Channel
+  label           String
+  status          ConnectionStatus @default(NOT_CONFIGURED)
+  detail          String?
+  inboundEnabled  Boolean          @default(false)
+  outboundEnabled Boolean          @default(false)
+  secretRef       String? // reference into the secrets store — never the raw token
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  events        InboundEvent[]
+  conversations Conversation[]
+}
+
+model InboundEvent {
+  id                    String             @id @default(uuid())
+  connectionId          String
+  connection            ChannelConnection  @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  provider              Channel
+  externalEventId       String
+  externalMessageId     String
+  externalConversationId String?
+  status                InboundEventStatus @default(PROCESSED)
+  simulated             Boolean            @default(false)
+  rawPayload            Json
+  normalized            Json?
+  error                 String?
+  receivedAt            DateTime           @default(now())
+  processedAt           DateTime?
+
+  // Idempotency: a provider event/message is unique within its connection.
+  @@unique([connectionId, externalEventId])
+  @@unique([connectionId, externalMessageId])
+  @@index([status])
+}
+
+model Conversation {
+  id                     String             @id @default(uuid())
+  connectionId           String?
+  connection             ChannelConnection? @relation(fields: [connectionId], references: [id])
+  channel                Channel
+  contactId              String
+  contact                Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  enquiryId              String?
+  enquiry                Enquiry?           @relation(fields: [enquiryId], references: [id])
+  externalConversationId String?
+  subject                String?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  messages Message[]
+
+  @@index([contactId])
+  @@index([enquiryId])
+}
+
+model Message {
+  id                String           @id @default(uuid())
+  conversationId    String
+  conversation      Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  externalMessageId String?
+  direction         MessageDirection
+  channel           Channel
+  authorName        String
+  body              String
+  delivery          DeliveryState    @default(RECEIVED)
+  occurredAt        DateTime
+  createdAt         DateTime         @default(now())
+
+  attachments MessageAttachment[]
+
+  @@index([conversationId])
+}
+
+model MessageAttachment {
+  id          String  @id @default(uuid())
+  messageId   String
+  message     Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  name        String
+  kind        String
+  storageKey  String? // object-storage key — content never stored in the DB
+  sizeBytes   Int?
+  contentType String?
+}
+
+// ---------------------------------------------------------------------------
+// Enquiries (user-facing module) + triage
+// ---------------------------------------------------------------------------
+
+model Enquiry {
+  id                     String        @id @default(uuid())
+  contactId              String
+  contact                Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  status                 EnquiryStatus @default(NEEDS_REPLY)
+  priority               Priority      @default(NORMAL)
+  channel                Channel // current/latest conversation channel
+  firstTouchSource       Channel
+  ownerId                String?
+  owner                  User?         @relation("EnquiryOwner", fields: [ownerId], references: [id])
+  slaPolicyId            String?
+  slaPolicy              SlaPolicy?    @relation(fields: [slaPolicyId], references: [id])
+  firstRespondedAt       DateTime?
+  lastInboundAt          DateTime
+  lastMessageAt          DateTime
+  programInterest        String?
+  expectedValueAmount    Int?
+  expectedValueCurrency  Currency?
+  nextAction             String?
+  nextActionDate         DateTime?
+  leadId                 String?       @unique
+  lead                   Lead?         @relation(fields: [leadId], references: [id])
+  version                Int           @default(0)
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  conversations Conversation[]
+  notes         InternalNote[]
+  tags          EnquiryTag[]
+  assignments   EnquiryAssignmentHistory[]
+  slaEvents     SlaEvent[]
+  tasks         Task[]
+  calls         DiscoveryCall[]
+
+  @@index([status])
+  @@index([ownerId])
+  @@index([channel])
+}
+
+model EnquiryTag {
+  id        String  @id @default(uuid())
+  enquiryId String
+  enquiry   Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  tag       String
+
+  @@unique([enquiryId, tag])
+}
+
+model EnquiryAssignmentHistory {
+  id        String   @id @default(uuid())
+  enquiryId String
+  enquiry   Enquiry  @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  byUserId  String?
+  toOwnerId String?
+  at        DateTime @default(now())
+
+  @@index([enquiryId])
+}
+
+model InternalNote {
+  id        String   @id @default(uuid())
+  enquiryId String?
+  enquiry   Enquiry? @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  leadId    String?
+  lead      Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  authorId  String?
+  authorName String
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([enquiryId])
+  @@index([leadId])
+}
+
+model SlaPolicy {
+  id                       String  @id @default(uuid())
+  key                      String  @unique
+  label                    String
+  firstResponseMins        Int
+  appliesTo                String
+  pauseWhenWaitingCustomer Boolean @default(true)
+  enabled                  Boolean @default(true)
+
+  enquiries Enquiry[]
+}
+
+model SlaEvent {
+  id        String   @id @default(uuid())
+  enquiryId String
+  enquiry   Enquiry  @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  type      String // DUE | WARNING | BREACH | MET
+  dueAt     DateTime?
+  firedAt   DateTime @default(now())
+
+  @@unique([enquiryId, type])
+  @@index([enquiryId])
+}
+
+model RoutingRule {
+  id              String  @id @default(uuid())
+  label           String
+  whenCountry     String?
+  whenChannel     Channel?
+  assignToUserId  String?
+  priorityOrder   Int     @default(0)
+  enabled         Boolean @default(true)
+}
+
+// ---------------------------------------------------------------------------
+// Leads & pipeline
+// ---------------------------------------------------------------------------
+
+model PipelineStage {
+  id             String  @id @default(uuid())
+  key            String  @unique
+  label          String
+  order          Int
+  isTerminalWon  Boolean @default(false)
+  isTerminalLost Boolean @default(false)
+
+  leads        Lead[]
+  fromHistory  LeadStageHistory[] @relation("FromStage")
+  toHistory    LeadStageHistory[] @relation("ToStage")
+}
+
+model LeadLostReason {
+  id    String @id @default(uuid())
+  key   String @unique
+  label String
+
+  leads Lead[]
+}
+
+model Lead {
+  id                    String                 @id @default(uuid())
+  contactId             String
+  contact               Contact                @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  stageId               String
+  stage                 PipelineStage          @relation(fields: [stageId], references: [id])
+  temperature           Temperature            @default(WARM)
+  ownerId               String?
+  owner                 User?                  @relation("LeadOwner", fields: [ownerId], references: [id])
+  programInterest       String?
+  preferredDates        String?
+  participants          Int                    @default(1)
+  expectedValueAmount   Int?
+  expectedValueCurrency Currency?
+  decisionDate          DateTime?
+  firstTouchSource      Channel
+  healthScreening       HealthScreeningStatus?
+  eligibility           EligibilityStatus?
+  lostReasonId          String?
+  lostReason            LeadLostReason?        @relation(fields: [lostReasonId], references: [id])
+  nextAction            String?
+  nextActionDate        DateTime?
+  confirmedAt           DateTime?
+  closedLostAt          DateTime?
+  version               Int                    @default(0)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  enquiry      Enquiry?
+  stageHistory LeadStageHistory[]
+  ownerHistory LeadOwnerHistory[]
+  activities   LeadActivity[]
+  notes        InternalNote[]
+  tasks        Task[]
+  calls        DiscoveryCall[]
+  booking      Booking?
+
+  @@index([stageId])
+  @@index([ownerId])
+}
+
+model LeadStageHistory {
+  id          String        @id @default(uuid())
+  leadId      String
+  lead        Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  fromStageId String?
+  fromStage   PipelineStage? @relation("FromStage", fields: [fromStageId], references: [id])
+  toStageId   String
+  toStage     PipelineStage  @relation("ToStage", fields: [toStageId], references: [id])
+  byUserId    String?
+  at          DateTime       @default(now())
+
+  @@index([leadId])
+}
+
+model LeadOwnerHistory {
+  id          String   @id @default(uuid())
+  leadId      String
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  fromOwnerId String?
+  toOwnerId   String?
+  at          DateTime @default(now())
+
+  @@index([leadId])
+}
+
+model LeadActivity {
+  id       String   @id @default(uuid())
+  leadId   String
+  lead     Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type     String
+  title    String
+  body     String?
+  byUserId String?
+  at       DateTime @default(now())
+
+  @@index([leadId])
+}
+
+// ---------------------------------------------------------------------------
+// Work & operations
+// ---------------------------------------------------------------------------
+
+model Task {
+  id          String     @id @default(uuid())
+  type        String
+  title       String
+  status      TaskStatus @default(OPEN)
+  priority    Priority   @default(NORMAL)
+  ownerId     String?
+  owner       User?      @relation("TaskOwner", fields: [ownerId], references: [id])
+  dueAt       DateTime?
+  completedAt DateTime?
+  enquiryId   String?
+  enquiry     Enquiry?   @relation(fields: [enquiryId], references: [id])
+  leadId      String?
+  lead        Lead?      @relation(fields: [leadId], references: [id])
+  contactId   String?
+  contact     Contact?   @relation(fields: [contactId], references: [id])
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([status])
+  @@index([ownerId])
+  @@index([dueAt])
+}
+
+model DiscoveryCall {
+  id           String     @id @default(uuid())
+  contactId    String?
+  contact      Contact?   @relation(fields: [contactId], references: [id])
+  enquiryId    String?
+  enquiry      Enquiry?   @relation(fields: [enquiryId], references: [id])
+  leadId       String?
+  lead         Lead?      @relation(fields: [leadId], references: [id])
+  ownerId      String?
+  owner        User?      @relation("CallOwner", fields: [ownerId], references: [id])
+  scheduledAt  DateTime // UTC
+  durationMins Int?
+  timezone     String // contact's IANA tz for display
+  status       CallStatus @default(SCHEDULED)
+  prepNotes    String?
+  outcome      String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([scheduledAt])
+  @@index([status])
+}
+
+model Program {
+  id            String   @id @default(uuid())
+  key           String   @unique
+  name          String
+  durationDays  Int?
+  priceUsdAmount Int?
+  priceInrAmount Int?
+  active        Boolean  @default(true)
+  descriptor    String?
+  createdAt     DateTime @default(now())
+
+  cohorts ProgramCohort[]
+}
+
+model ProgramCohort {
+  id          String   @id @default(uuid())
+  programId   String
+  program     Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  startDate   DateTime
+  capacity    Int
+  bookedCount Int      @default(0)
+
+  bookings Booking[]
+}
+
+model Booking {
+  id            String         @id @default(uuid())
+  leadId        String         @unique
+  lead          Lead           @relation(fields: [leadId], references: [id])
+  contactId     String
+  contact       Contact        @relation(fields: [contactId], references: [id])
+  cohortId      String?
+  cohort        ProgramCohort? @relation(fields: [cohortId], references: [id])
+  valueAmount   Int
+  valueCurrency Currency
+  paymentStatus PaymentStatus  @default(PENDING)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  customer ConfirmedCustomer?
+}
+
+model ConfirmedCustomer {
+  id               String           @id @default(uuid())
+  bookingId        String           @unique
+  booking          Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  contactId        String           @unique
+  contact          Contact          @relation(fields: [contactId], references: [id])
+  onboardingStatus OnboardingStatus @default(NOT_STARTED)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Platform & governance
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id         String    @id @default(uuid())
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id])
+  type       String
+  title      String
+  body       String?
+  entityType String?
+  entityId   String?
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([readAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  at         DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+}
+
+model OutboxEvent {
+  id          String       @id @default(uuid())
+  type        String
+  payload     Json
+  status      OutboxStatus @default(PENDING)
+  attempts    Int          @default(0)
+  lastError   String?
+  createdAt   DateTime     @default(now())
+  processedAt DateTime?
+
+  @@index([status])
+}
+
+model SystemSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  valueJson Json
+  updatedAt DateTime @updatedAt
+}
