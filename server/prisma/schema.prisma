@@ -19,7 +19,10 @@
 // lead, task, call owner; sessions; notifications) ARE modeled as FKs.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // "native" for local dev; the musl/openssl-3 target is required on the
+  // Alpine-based production image (Railway), else the query engine is missing.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
