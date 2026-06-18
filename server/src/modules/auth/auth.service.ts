@@ -1,5 +1,6 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { DomainError } from '../../common/errors/domain.errors';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes, createHash } from 'node:crypto';
 import * as argon2 from 'argon2';
@@ -52,6 +53,37 @@ export class AuthService {
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+  }
+
+  /**
+   * Change the signed-in user's password. Verifies the current password,
+   * stores the new hash, revokes ALL existing sessions (security), then issues
+   * a fresh session so the current device stays logged in seamlessly.
+   */
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+    meta?: { ip?: string; userAgent?: string },
+  ): Promise<TokensDto> {
+    const user = await this.users.findById(userId);
+    if (!user) throw new UnauthorizedException('Account unavailable.');
+
+    const ok = await argon2.verify(user.passwordHash, currentPassword).catch(() => false);
+    if (!ok) {
+      throw new DomainError('INVALID_PASSWORD', 'Your current password is incorrect.', HttpStatus.UNPROCESSABLE_ENTITY, {
+        currentPassword: ['Incorrect password.'],
+      });
+    }
+    if (await argon2.verify(user.passwordHash, newPassword).catch(() => false)) {
+      throw new DomainError('SAME_PASSWORD', 'New password must be different from the current one.', HttpStatus.UNPROCESSABLE_ENTITY, {
+        newPassword: ['Choose a different password.'],
+      });
+    }
+
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash: await argon2.hash(newPassword) } });
+    await this.logoutAll(userId); // invalidate every old session on password change
+    return this.issueTokens({ sub: user.id, email: user.email, role: user.role }, meta);
   }
 
   private async issueTokens(payload: AccessTokenPayload, meta?: { ip?: string; userAgent?: string }): Promise<TokensDto> {

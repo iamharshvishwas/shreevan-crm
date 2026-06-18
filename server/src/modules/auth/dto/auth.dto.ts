@@ -18,6 +18,17 @@ export class RefreshDto {
   refreshToken!: string;
 }
 
+export class ChangePasswordDto {
+  @ApiProperty()
+  @IsString()
+  currentPassword!: string;
+
+  @ApiProperty({ minLength: 8 })
+  @IsString()
+  @MinLength(8)
+  newPassword!: string;
+}
+
 export class TokensDto {
   @ApiProperty() accessToken!: string;
   @ApiProperty() refreshToken!: string;

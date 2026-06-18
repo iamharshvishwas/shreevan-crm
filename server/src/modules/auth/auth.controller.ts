@@ -1,9 +1,9 @@
-import { Body, Controller, Post, Req } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Patch, Post, Req } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
-import { LoginDto, RefreshDto, TokensDto } from './dto/auth.dto';
+import { ChangePasswordDto, LoginDto, RefreshDto, TokensDto } from './dto/auth.dto';
 import { CurrentUser, Public } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/auth.types';
 
@@ -40,5 +40,13 @@ export class AuthController {
   async logoutAll(@CurrentUser() user: AuthUser): Promise<{ success: true }> {
     await this.auth.logoutAll(user.id);
     return { success: true };
+  }
+
+  /** Change the signed-in user's own password. Returns a fresh token pair. */
+  @ApiBearerAuth()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Patch('password')
+  changePassword(@Body() dto: ChangePasswordDto, @CurrentUser() user: AuthUser, @Req() req: Request): Promise<TokensDto> {
+    return this.auth.changePassword(user.id, dto.currentPassword, dto.newPassword, this.meta(req));
   }
 }

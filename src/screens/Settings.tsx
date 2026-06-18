@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { AppStore } from '../store';
 import { ApiError } from '../api/client';
+import { changePassword } from '../api/auth';
 import { Callout } from '../components/ui';
 import { CHANNEL_LABEL } from '../api/enquiries';
 import {
@@ -40,6 +41,8 @@ export function Settings({ app }: { app: AppStore }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 24, alignItems: 'start' }}>
         {admin ? <AdminTeam app={app} /> : <ReadonlyTeam />}
+
+        <PasswordCard app={app} />
 
         {/* Notifications (preferences — local) */}
         <section style={cardStyle}>
@@ -148,6 +151,59 @@ export function Settings({ app }: { app: AppStore }) {
         </section>
       </div>
     </div>
+  );
+}
+
+/* ---------------- Your account: change password ---------------- */
+
+function PasswordCard({ app }: { app: AppStore }) {
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!current || !next) { app.showToastMsg('Current aur new password dono bharo.'); return; }
+    if (next.length < 8) { app.showToastMsg('New password kam se kam 8 characters ka ho.'); return; }
+    if (next !== confirm) { app.showToastMsg('New password aur confirm match nahi kar rahe.'); return; }
+    setBusy(true);
+    try {
+      await changePassword(current, next);
+      app.showToastMsg('Password badal diya gaya ✅');
+      setCurrent(''); setNext(''); setConfirm('');
+    } catch (e) {
+      app.showToastMsg(e instanceof ApiError ? e.message : 'Password change nahi ho paya.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const field = (label: string, value: string, set: (v: string) => void, placeholder: string) => (
+    <label style={{ display: 'block' }}>
+      <span style={{ display: 'block', fontSize: 12, color: 'var(--sw-stone-600)', marginBottom: 5 }}>{label}</span>
+      <input type="password" value={value} placeholder={placeholder} autoComplete="off"
+        onChange={(e) => set(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
+        style={inputStyle} />
+    </label>
+  );
+
+  return (
+    <section style={cardStyle}>
+      <h2 style={{ ...h2Style, marginBottom: 6 }}>Your account</h2>
+      <p style={{ margin: '0 0 14px 0', fontSize: 12.5, color: 'var(--sw-stone-600)' }}>Apna login password yahan se badlo.</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {field('Current password', current, setCurrent, 'Abhi wala password')}
+        {field('New password', next, setNext, 'Kam se kam 8 characters')}
+        {field('Confirm new password', confirm, setConfirm, 'Dobara new password')}
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={() => void submit()} disabled={busy} className="hov-forest-deep"
+            style={{ height: 36, padding: '0 18px', borderRadius: 999, border: '1px solid var(--sw-forest-900)', background: 'var(--sw-forest-900)', color: '#fff', fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 600, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>
+            {busy ? 'Changing…' : 'Change password'}
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 
