@@ -5,7 +5,8 @@ import { api } from './client';
 
 export type Channel =
   | 'INSTAGRAM' | 'FACEBOOK' | 'WHATSAPP' | 'EMAIL'
-  | 'WEBSITE_FORM' | 'WEBSITE_CHAT' | 'PHONE' | 'WALKIN' | 'REFERRAL' | 'GOOGLE_BUSINESS';
+  | 'WEBSITE_FORM' | 'WEBSITE_CHAT' | 'PHONE' | 'WALKIN' | 'REFERRAL' | 'GOOGLE_BUSINESS'
+  | 'GOOGLE_ADS' | 'LINKEDIN';
 
 export type EnquiryStatus = 'NEEDS_REPLY' | 'WAITING_FOR_CUSTOMER' | 'RESOLVED' | 'SPAM';
 export type Priority = 'HIGH' | 'NORMAL' | 'LOW';
@@ -24,6 +25,7 @@ export const CHANNEL_LABEL: Record<Channel, string> = {
   INSTAGRAM: 'Instagram', FACEBOOK: 'Facebook', WHATSAPP: 'WhatsApp', EMAIL: 'Email',
   WEBSITE_FORM: 'Website form', WEBSITE_CHAT: 'Website chat', PHONE: 'Phone', WALKIN: 'Walk-in',
   REFERRAL: 'Referral', GOOGLE_BUSINESS: 'Google Business',
+  GOOGLE_ADS: 'Google Ads', LINKEDIN: 'LinkedIn Ads',
 };
 
 export const STATUS_LABEL: Record<EnquiryStatus, string> = {

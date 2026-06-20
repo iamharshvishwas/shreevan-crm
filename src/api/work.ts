@@ -31,6 +31,11 @@ export interface DiscoveryCall {
   prepNotes: string | null;
   outcome: string | null;
   durationMins: number | null;
+  // Veda AI voice-call fields (Phase 3); transcript is health-redacted.
+  recordingUrl: string | null;
+  summary: string | null;
+  transcriptRedacted: string | null;
+  externalCallId: string | null;
   contact: { name: string; country: string | null; timezone: string | null };
   owner: { name: string } | null;
   lead: { id: string } | null;

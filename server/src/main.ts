@@ -8,11 +8,25 @@ import { AppModule } from './app.module';
 import { PrismaService } from './database/prisma.service';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: false });
+  // rawBody: true exposes req.rawBody so we can verify Meta's X-Hub-Signature-256.
+  const app = await NestFactory.create(AppModule, { bufferLogs: false, rawBody: true });
   const config = app.get(ConfigService);
 
   app.use(helmet());
-  app.enableCors({ origin: config.get<string>('CORS_ORIGIN'), credentials: true });
+  // CRM origin uses credentials (JWT). Marketing-site origins are allowed too so the
+  // public Veda chat widget can call /chat/message (no credentials needed there).
+  const crmOrigin = config.get<string>('CORS_ORIGIN')!;
+  const siteOrigins = (config.get<string>('PUBLIC_SITE_ORIGIN') ?? '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+  const allowedOrigins = new Set([crmOrigin, ...siteOrigins]);
+  app.enableCors({
+    origin: (origin, cb) => {
+      // Allow same-origin / server-to-server (no Origin header) and any allow-listed origin.
+      if (!origin || allowedOrigins.has(origin)) return cb(null, true);
+      return cb(null, false);
+    },
+    credentials: true,
+  });
 
   app.setGlobalPrefix('api');
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });

@@ -2,6 +2,7 @@ import { AddLeadModal } from './components/AddLeadModal';
 import { Sidebar } from './components/Sidebar';
 import { Toast } from './components/Toast';
 import { Topbar } from './components/Topbar';
+import { VedaMic } from './components/VedaMic';
 import { Calls } from './screens/Calls';
 import { Customers } from './screens/Customers';
 import { Enquiries } from './screens/Enquiries';
@@ -13,6 +14,7 @@ import { Programs } from './screens/Programs';
 import { Reports } from './screens/Reports';
 import { Settings } from './screens/Settings';
 import { Tasks } from './screens/Tasks';
+import { Veda } from './screens/Veda';
 import { Login } from './screens/Login';
 import { useAppStore } from './store';
 import { useAuth, type AuthStore } from './auth/useAuth';
@@ -49,6 +51,8 @@ function AuthedApp({ auth }: { auth: AuthStore }) {
         return <Customers app={app} />;
       case 'settings':
         return <Settings app={app} />;
+      case 'veda':
+        return <Veda app={app} />;
       default:
         return <Overview app={app} />;
     }
@@ -80,6 +84,7 @@ function AuthedApp({ auth }: { auth: AuthStore }) {
 
       {app.showAddLead && <AddLeadModal app={app} />}
       <Toast app={app} />
+      <VedaMic />
     </div>
   );
 }

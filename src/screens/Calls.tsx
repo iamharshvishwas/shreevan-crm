@@ -63,13 +63,36 @@ export function Calls({ app }: { app: AppStore }) {
           {data.completed.length === 0 && <div style={{ fontSize: 13, color: 'var(--sw-stone-600)' }}>No completed calls yet.</div>}
           {data.completed.length > 0 && (
             <div style={{ background: '#ffffff', border: '1px solid var(--sw-line-soft)', borderRadius: 'var(--radius-card)', overflow: 'hidden' }}>
-              {data.completed.map((c, i) => (
-                <div key={c.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(140px,1fr) minmax(0,1.4fr) auto', alignItems: 'center', gap: 12, padding: '13px 18px', borderBottom: i < data.completed.length - 1 ? '1px solid var(--sw-mist-100)' : 'none' }}>
-                  <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--sw-ink-900)' }}>{c.contact.name}</span>
-                  <span style={{ fontSize: 12.5, color: 'var(--sw-ink-900)' }}>{c.outcome ? `Outcome: ${c.outcome}` : '—'}</span>
-                  <Pill bg="#e4efe8" fg="#2e6a4d" fontSize={11.5} padding="3px 10px">Completed</Pill>
-                </div>
-              ))}
+              {data.completed.map((c, i) => {
+                const isVeda = !!c.externalCallId;
+                return (
+                  <div key={c.id} style={{ padding: '13px 18px', borderBottom: i < data.completed.length - 1 ? '1px solid var(--sw-mist-100)' : 'none' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px,1fr) minmax(0,1.4fr) auto', alignItems: 'center', gap: 12 }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--sw-ink-900)', display: 'flex', alignItems: 'center', gap: 7 }}>
+                        {c.contact.name}
+                        {isVeda && <Pill bg="#e4efe8" fg="var(--sw-forest-900)" fontSize={10.5} padding="2px 8px">Veda AI call</Pill>}
+                      </span>
+                      <span style={{ fontSize: 12.5, color: 'var(--sw-ink-900)' }}>{c.summary ?? (c.outcome ? `Outcome: ${c.outcome}` : '—')}</span>
+                      <Pill bg="#e4efe8" fg="#2e6a4d" fontSize={11.5} padding="3px 10px">Completed</Pill>
+                    </div>
+                    {(c.recordingUrl || c.transcriptRedacted) && (
+                      <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 12 }}>
+                        {c.recordingUrl && (
+                          <a href={c.recordingUrl} target="_blank" rel="noreferrer" className="hov-underline" style={{ color: 'var(--sw-river-600)', fontWeight: 600, textDecoration: 'none' }}>
+                            ▶ Recording
+                          </a>
+                        )}
+                        {c.transcriptRedacted && (
+                          <details style={{ color: 'var(--sw-stone-600)' }}>
+                            <summary style={{ cursor: 'pointer', color: 'var(--sw-river-600)', fontWeight: 600 }}>Transcript (health-redacted)</summary>
+                            <div style={{ marginTop: 6, whiteSpace: 'pre-wrap', lineHeight: 1.5, maxHeight: 240, overflowY: 'auto', background: 'var(--sw-sand-050)', padding: 10, borderRadius: 8 }}>{c.transcriptRedacted}</div>
+                          </details>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </>

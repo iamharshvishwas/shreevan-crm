@@ -10,9 +10,43 @@ export const envSchema = z.object({
   JWT_ACCESS_TTL: z.coerce.number().int().positive().default(900),
   JWT_REFRESH_TTL: z.coerce.number().int().positive().default(2_592_000),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  // Public base URL of this API — used so external providers (Vapi) can call our webhooks.
+  PUBLIC_API_URL: z.string().default('https://api.shreevanwellness.com'),
+  // Marketing website origin(s) allowed to call the public chat endpoint (comma-separated).
+  PUBLIC_SITE_ORIGIN: z.string().default('https://shreevanwellness.com,https://www.shreevanwellness.com'),
   ENABLE_SIMULATION: z
     .preprocess((v) => (typeof v === 'string' ? v === 'true' : v), z.boolean())
     .default(false),
+
+  // --- Veda AI agent (all optional; features no-op until configured) ---
+  // OpenAI API key from platform.openai.com (NOT a ChatGPT subscription).
+  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_MODEL: z.string().default('gpt-4o-mini'),
+  // Resend email API (https://resend.com) — for Veda's outbound emails.
+  RESEND_API_KEY: z.string().optional(),
+  VEDA_FROM_EMAIL: z.string().default('Veda · Shreevan Wellness <veda@shreevanwellness.com>'),
+  // Shared secret for the inbound-email webhook (Postmark/Mailgun/SendGrid → /webhooks/email).
+  EMAIL_WEBHOOK_SECRET: z.string().optional(),
+
+  // --- WhatsApp Cloud API + Meta webhooks (Phase 2; all optional) ---
+  WHATSAPP_TOKEN: z.string().optional(),            // Graph API access token
+  WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),  // sender phone-number id
+  WHATSAPP_VERIFY_TOKEN: z.string().optional(),     // webhook GET verification token
+  META_APP_SECRET: z.string().optional(),           // verifies X-Hub-Signature-256
+  META_PAGE_TOKEN: z.string().optional(),           // Page token for Lead Ads fetch
+  WHATSAPP_GREETING_TEMPLATE: z.string().default('veda_greeting'),
+  META_GRAPH_VERSION: z.string().default('v21.0'),
+
+  // --- Other lead sources (Phase: multi-source intake; all optional) ---
+  GOOGLE_ADS_KEY: z.string().optional(),       // matches the "key" set in Google Lead Form webhook
+  LEAD_WEBHOOK_SECRET: z.string().optional(),  // shared secret for generic + LinkedIn intake
+
+  // --- Vapi AI voice calls (Phase 3; all optional) ---
+  VAPI_API_KEY: z.string().optional(),            // Vapi private key
+  VAPI_PHONE_NUMBER_ID: z.string().optional(),    // outbound caller id (Vapi)
+  VAPI_ASSISTANT_ID: z.string().optional(),       // optional pre-built assistant; else inline
+  VAPI_WEBHOOK_SECRET: z.string().optional(),     // verifies X-Vapi-Signature header
+  VAPI_VOICE_ID: z.string().default('elliot'),    // default voice
 });
 
 export type Env = z.infer<typeof envSchema>;

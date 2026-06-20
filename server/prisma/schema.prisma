@@ -52,6 +52,8 @@ enum Channel {
   WALKIN
   REFERRAL
   GOOGLE_BUSINESS // attribution / first-touch only — no direct messaging
+  GOOGLE_ADS      // Google Lead Form ads
+  LINKEDIN        // LinkedIn Lead Gen Forms
 }
 
 enum EnquiryStatus {
@@ -162,6 +164,14 @@ enum OutboxStatus {
   PENDING
   PROCESSED
   FAILED
+}
+
+enum VedaApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  AUTO_SENT
 }
 
 // ---------------------------------------------------------------------------
@@ -543,6 +553,7 @@ model Lead {
   tasks        Task[]
   calls        DiscoveryCall[]
   booking      Booking?
+  nurture      NurtureEnrollment?
 
   @@index([stageId])
   @@index([ownerId])
@@ -630,6 +641,11 @@ model DiscoveryCall {
   status       CallStatus @default(SCHEDULED)
   prepNotes    String?
   outcome      String?
+  // Veda AI voice-call fields (Phase 3). Transcript is health-redacted before storage.
+  externalCallId     String? // provider (Vapi) call id
+  recordingUrl       String?
+  transcriptRedacted String?
+  summary            String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -741,4 +757,89 @@ model SystemSetting {
   key       String   @unique
   valueJson Json
   updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Veda AI agent — approval queue + immutable action log
+// ---------------------------------------------------------------------------
+
+model VedaApproval {
+  id         String             @id @default(uuid())
+  type       String             // QUALIFY_LEAD | SEND_EMAIL | SEND_WHATSAPP | VOICE_CALL
+  status     VedaApprovalStatus @default(PENDING)
+  entityType String             // Lead | Enquiry | Contact
+  entityId   String
+  draftText  String             // human-readable preview of what Veda wants to do
+  payload    Json               // full action payload
+  context    Json?              // Veda's reasoning
+  reviewedBy String?            // userId who approved/rejected
+  reviewedAt DateTime?
+  reviewNote String?
+  expiresAt  DateTime?
+  createdAt  DateTime           @default(now())
+
+  logs VedaActionLog[]
+
+  @@index([status])
+  @@index([entityType, entityId])
+}
+
+model VedaActionLog {
+  id             String        @id @default(uuid())
+  type           String
+  status         String        // QUEUED | RUNNING | COMPLETED | FAILED | SKIPPED | KILLED
+  entityType     String?
+  entityId       String?
+  approvalId     String?
+  approval       VedaApproval? @relation(fields: [approvalId], references: [id])
+  input          Json?
+  output         Json?
+  error          String?
+  costUsdMicro   Int?          // OpenAI cost in micro-USD (1 = $0.000001)
+  durationMs     Int?
+  killedBySwitch Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+  completedAt    DateTime?
+
+  @@index([entityType, entityId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// Veda knowledge base — what Veda knows. Retrieved (RAG) into chat/voice/email replies.
+model VedaKnowledge {
+  id        String   @id @default(uuid())
+  title     String
+  content   String
+  category  String?
+  tags      String[]
+  active    Boolean  @default(true)
+  embedding Float[]  // OpenAI embedding vector; empty when AI not configured (keyword fallback)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+}
+
+enum NurtureStatus {
+  ACTIVE
+  COMPLETED
+  STOPPED
+}
+
+// One nurture-cadence enrollment per lead. The scheduler advances steps over time.
+model NurtureEnrollment {
+  id            String        @id @default(uuid())
+  leadId        String        @unique
+  lead          Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  sequenceKey   String        @default("default")
+  status        NurtureStatus @default(ACTIVE)
+  currentStep   Int           @default(0)
+  nextRunAt     DateTime
+  lastStepAt    DateTime?
+  stoppedReason String?
+  startedAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([status, nextRunAt])
 }

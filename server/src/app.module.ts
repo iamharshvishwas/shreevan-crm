@@ -23,6 +23,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { SettingsModule } from './modules/settings/settings.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { JobsModule } from './jobs/jobs.module';
+import { VedaModule } from './modules/veda/veda.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { JobsModule } from './jobs/jobs.module';
     SettingsModule,
     ReportsModule,
     JobsModule,
+    VedaModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

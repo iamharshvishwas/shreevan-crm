@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Post } from '@nestjs/common';
+import { Body, Controller, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { ConfigService } from '@nestjs/config';
@@ -33,18 +33,8 @@ export class IntakeController {
     return this.enquiries.createManual(dto);
   }
 
-  // --- Provider webhooks (signature verification lives in each adapter) ---
-  // Live providers are awaiting credentials; the boundary + validation exist.
-  @Public()
-  @Throttle({ default: { limit: 120, ttl: 60_000 } })
-  @Post('webhooks/:provider')
-  webhook(@Param('provider') provider: string) {
-    return {
-      accepted: false,
-      provider,
-      detail: 'Webhook endpoint live. Signature verification + parsing await provider credentials (see README → Integrations).',
-    };
-  }
+  // Live provider webhooks are handled by MetaWebhookController (/webhooks/meta)
+  // in the Veda module, which owns signature verification + parsing.
 
   // --- Development-only inbound simulation (blocked in production) ---
   @Post('enquiries/simulate')

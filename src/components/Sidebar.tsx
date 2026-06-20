@@ -22,6 +22,7 @@ const NAV: { key: ScreenKey; label: string; icon: JSX.Element }[] = [
   { key: 'programs', label: 'Programs', icon: <Ic parts={['M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z', 'M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12']} /> },
   { key: 'reports', label: 'Reports', icon: <Ic parts={['M3 3v18h18', 'M18 17V9', 'M13 17V5', 'M8 17v-3']} /> },
   { key: 'customers', label: 'Confirmed Customers', icon: <Ic parts={['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', { c: [9, 7, 4] }, 'm16 11 2 2 4-4']} /> },
+  { key: 'veda', label: 'Veda — AI Agent', icon: <Ic parts={['M12 2a10 10 0 1 0 10 10', 'M12 6v6l4 2', 'M20 2v4h4', 'M22 2 17 7']} /> },
   { key: 'settings', label: 'Settings', icon: <Ic parts={['M20 7h-9', 'M14 17H5', { c: [17, 17, 3] }, { c: [7, 7, 3] }]} /> },
 ];
 
