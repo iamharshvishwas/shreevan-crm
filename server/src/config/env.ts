@@ -22,7 +22,13 @@ export const envSchema = z.object({
   // OpenAI API key from platform.openai.com (NOT a ChatGPT subscription).
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().default('gpt-4o-mini'),
-  // Resend email API (https://resend.com) — for Veda's outbound emails.
+  // Outbound email. Two options (SMTP takes priority over Resend):
+  //  - SMTP (e.g. Gmail with an App Password) — lets Veda send from a Gmail address.
+  //  - Resend API — needs a verified domain.
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(465),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   VEDA_FROM_EMAIL: z.string().default('Veda · Shreevan Wellness <veda@shreevanwellness.com>'),
   // Shared secret for the inbound-email webhook (Postmark/Mailgun/SendGrid → /webhooks/email).
