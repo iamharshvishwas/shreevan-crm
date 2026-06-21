@@ -100,12 +100,18 @@ export class EmailProvider {
   private smtpTransport(): Transporter {
     if (!this.transporter) {
       const port = this.config.get<number>('SMTP_PORT') ?? 465;
-      this.transporter = nodemailer.createTransport({
+      const opts = {
         host: this.config.get<string>('SMTP_HOST'),
         port,
         secure: port === 465,
         auth: { user: this.config.get<string>('SMTP_USER'), pass: this.config.get<string>('SMTP_PASS') },
-      });
+        family: 4,                // force IPv4 (Railway IPv6 egress is unreliable)
+        connectionTimeout: 15000, // fail fast instead of hanging ~120s
+        greetingTimeout: 10000,
+        socketTimeout: 20000,
+      };
+      // nodemailer's overloaded typings don't expose `family`; the option is valid at runtime.
+      this.transporter = nodemailer.createTransport(opts as unknown as Parameters<typeof nodemailer.createTransport>[0]);
     }
     return this.transporter;
   }
