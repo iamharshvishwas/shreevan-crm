@@ -143,12 +143,11 @@ export class EmailProvider {
 
 /** Build an RFC 822 message and base64url-encode it for the Gmail API `raw` field. */
 function buildRawMessage(from: string, to: string, subject: string, body: string): string {
-  const encodedSubject = '=?UTF-8?B?' + Buffer.from(subject, 'utf8').toString('base64') + '?=';
   const bodyB64 = Buffer.from(body, 'utf8').toString('base64');
   const mime = [
-    `From: ${from}`,
+    `From: ${encodeFromHeader(from)}`,
     `To: ${to}`,
-    `Subject: ${encodedSubject}`,
+    `Subject: ${encodeHeaderWord(subject)}`,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset="UTF-8"',
     'Content-Transfer-Encoding: base64',
@@ -156,4 +155,20 @@ function buildRawMessage(from: string, to: string, subject: string, body: string
     bodyB64,
   ].join('\r\n');
   return Buffer.from(mime, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+const ASCII_ONLY = /^[\x00-\x7F]*$/; // eslint-disable-line no-control-regex
+
+/** RFC 2047-encode a header value only if it contains non-ASCII characters. */
+function encodeHeaderWord(s: string): string {
+  return ASCII_ONLY.test(s) ? s : '=?UTF-8?B?' + Buffer.from(s, 'utf8').toString('base64') + '?=';
+}
+
+/** Encode the display-name part of a "Name <email>" From header, leaving the address intact. */
+function encodeFromHeader(from: string): string {
+  const m = from.match(/^(.*)<([^>]+)>\s*$/);
+  if (!m) return from;
+  const name = m[1].trim();
+  const email = m[2].trim();
+  return name ? `${encodeHeaderWord(name)} <${email}>` : `<${email}>`;
 }
