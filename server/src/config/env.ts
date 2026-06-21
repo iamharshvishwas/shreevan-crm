@@ -29,6 +29,10 @@ export const envSchema = z.object({
   SMTP_PORT: z.coerce.number().int().positive().default(465),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
+  // Gmail API (OAuth) — HTTPS, works on Railway where SMTP ports are blocked.
+  GMAIL_CLIENT_ID: z.string().optional(),
+  GMAIL_CLIENT_SECRET: z.string().optional(),
+  GMAIL_REFRESH_TOKEN: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   VEDA_FROM_EMAIL: z.string().default('Veda · Shreevan Wellness <veda@shreevanwellness.com>'),
   // Shared secret for the inbound-email webhook (Postmark/Mailgun/SendGrid → /webhooks/email).
