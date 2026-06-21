@@ -99,6 +99,8 @@ export const vedaApi = {
   command:        (transcript: string) =>
     api.post<VedaCommandResult>('/veda/command', { transcript }),
   getAnalytics:   () => api.get<VedaAnalytics>('/veda/analytics'),
+  testEmail:      (to?: string) =>
+    api.post<{ to: string; delivered: boolean; simulated: boolean; detail: string }>('/veda/test-email', { to }),
   // Knowledge base
   listKnowledge:  () => api.get<KnowledgeEntry[]>('/veda/knowledge'),
   createKnowledge: (body: { title: string; content: string; category?: string; tags?: string[]; active?: boolean }) =>

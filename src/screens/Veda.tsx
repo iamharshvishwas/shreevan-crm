@@ -128,6 +128,21 @@ export function Veda({ app }: { app: AppStore }) {
 
   useEffect(() => { void load(); }, [load]);
 
+  const [testingEmail, setTestingEmail] = useState(false);
+  async function sendTestEmail() {
+    setTestingEmail(true);
+    try {
+      const to = window.prompt('Send a test email to:', auth.user?.email ?? '') ?? '';
+      if (!to.trim()) return;
+      const r = await vedaApi.testEmail(to.trim());
+      app.showToastMsg(r.simulated ? `Simulated (not configured): ${r.detail}` : `Test email sent to ${r.to} ✓`);
+    } catch {
+      app.showToastMsg('Test email failed — check email settings / logs');
+    } finally {
+      setTestingEmail(false);
+    }
+  }
+
   async function toggleGlobal(on: boolean) {
     if (!config || !isAdmin) return;
     setSaving(true);
@@ -287,6 +302,16 @@ export function Veda({ app }: { app: AppStore }) {
               </div>
             </div>
             <Toggle on={globalOn} onChange={toggleGlobal} disabled={saving} />
+          </div>
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--sw-sand-100)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ fontSize: 12.5, color: 'var(--sw-ink-400)' }}>Verify email sending (SMTP/Resend) with a quick test.</div>
+            <button
+              onClick={sendTestEmail}
+              disabled={testingEmail}
+              style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--sw-sand-200)', background: '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--sw-forest-800)', whiteSpace: 'nowrap', opacity: testingEmail ? 0.6 : 1 }}
+            >
+              {testingEmail ? 'Sending…' : 'Send test email'}
+            </button>
           </div>
         </Card>
       )}
