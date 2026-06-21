@@ -28,6 +28,11 @@ export const envSchema = z.object({
   // Shared secret for the inbound-email webhook (Postmark/Mailgun/SendGrid → /webhooks/email).
   EMAIL_WEBHOOK_SECRET: z.string().optional(),
 
+  // --- ElevenLabs text-to-speech for the website live-chat widget (optional) ---
+  ELEVENLABS_API_KEY: z.string().optional(),
+  ELEVENLABS_VOICE_ID: z.string().default('21m00Tcm4TlvDq8ikWAM'), // pick a multilingual voice in ElevenLabs
+  ELEVENLABS_MODEL: z.string().default('eleven_turbo_v2_5'),        // low-latency, multilingual (Hindi+English)
+
   // --- WhatsApp Cloud API + Meta webhooks (Phase 2; all optional) ---
   WHATSAPP_TOKEN: z.string().optional(),            // Graph API access token
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),  // sender phone-number id

@@ -1,12 +1,14 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { randomUUID } from 'node:crypto';
+import type { Response } from 'express';
 import { Channel, ConnectionStatus, DeliveryState, MessageDirection } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { IngestionService } from '../../enquiries/ingestion.service';
 import { NormalizedInboundEvent } from '../../enquiries/dto/inbound-event.dto';
 import { VedaChatService } from '../agents/veda-chat.service';
+import { ElevenLabsProvider } from './eleven-labs.provider';
 import { Public, CurrentUser } from '../../../common/auth/decorators';
 import type { AuthUser } from '../../../common/auth/auth.types';
 import { ChatMessageDto } from '../dto/veda.dto';
@@ -25,7 +27,24 @@ export class ChatController {
     private readonly prisma: PrismaService,
     private readonly ingestion: IngestionService,
     private readonly chat: VedaChatService,
+    private readonly tts: ElevenLabsProvider,
   ) {}
+
+  /**
+   * Text-to-speech for the widget. Returns MP3 audio (ElevenLabs). When not
+   * configured, returns 204 so the widget falls back to the browser's voice.
+   */
+  @Public()
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Post('tts')
+  async speak(@Body() body: { text?: string }, @Res() res: Response): Promise<void> {
+    const text = (body?.text ?? '').trim();
+    if (!text || !this.tts.isConfigured()) { res.status(204).end(); return; }
+    const audio = await this.tts.speak(text);
+    if (!audio) { res.status(204).end(); return; }
+    res.set({ 'Content-Type': 'audio/mpeg', 'Content-Length': String(audio.length), 'Cache-Control': 'no-store' });
+    res.send(audio);
+  }
 
   @Public()
   @Throttle({ default: { limit: 30, ttl: 60_000 } })

@@ -44,7 +44,12 @@
     '.hd .ttl{font-weight:700;font-size:16px;color:#fff}' +
     '.hd .sub{font-size:11.5px;color:rgba(255,255,255,.6)}' +
     '.hd .dot{width:7px;height:7px;border-radius:50%;background:#7fd6a8;display:inline-block;margin-right:5px}' +
-    '.hd .x{margin-left:auto;background:transparent;border:none;color:rgba(255,255,255,.7);cursor:pointer;font-size:20px;line-height:1}' +
+    '.hd .vbtn{margin-left:auto;background:transparent;border:none;color:rgba(255,255,255,.85);cursor:pointer;padding:3px 7px;border-radius:7px;display:flex;align-items:center}' +
+    '.hd .vbtn.on{background:rgba(255,255,255,.22);color:#fff}' +
+    '.hd .x{margin-left:6px;background:transparent;border:none;color:rgba(255,255,255,.7);cursor:pointer;font-size:20px;line-height:1}' +
+    '.ft .mic{flex:0 0 auto;background:#eef2f0;color:' + FOREST + ';border:1px solid #dfe7e3;border-radius:10px;padding:0 11px;cursor:pointer;display:flex;align-items:center}' +
+    '.ft .mic.live{background:#c0392b;color:#fff;border-color:#c0392b;animation:vpulse 1.2s infinite}' +
+    '@keyframes vpulse{0%,100%{opacity:1}50%{opacity:.55}}' +
     '.body{flex:1;overflow-y:auto;padding:16px;background:' + SAND + ';display:flex;flex-direction:column;gap:10px}' +
     '.row{display:flex;max-width:85%}' +
     '.row.me{align-self:flex-end;justify-content:flex-end}' +
@@ -63,10 +68,18 @@
       '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>' +
     '</button>' +
     '<div class="panel" role="dialog" aria-label="Veda chat">' +
-      '<div class="hd"><div><div class="ttl">Veda</div><div class="sub"><span class="dot"></span>Shreevan Wellness</div></div><button class="x" aria-label="Close">×</button></div>' +
+      '<div class="hd"><div><div class="ttl">Veda</div><div class="sub"><span class="dot"></span>Shreevan Wellness</div></div>' +
+        '<button class="vbtn" aria-label="Toggle voice" title="Voice replies">' +
+          '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14"/></svg>' +
+        '</button>' +
+        '<button class="x" aria-label="Close">×</button></div>' +
       '<div class="body"></div>' +
       '<div class="brand">Powered by Veda · Shreevan Wellness</div>' +
-      '<form class="ft"><input type="text" placeholder="Type your message…" autocomplete="off"/><button type="submit">Send</button></form>' +
+      '<form class="ft">' +
+        '<button type="button" class="mic" aria-label="Speak">' +
+          '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4"/></svg>' +
+        '</button>' +
+        '<input type="text" placeholder="Type or tap the mic…" autocomplete="off"/><button type="submit">Send</button></form>' +
     '</div>';
 
   var launch = root.querySelector('.launch');
@@ -75,7 +88,11 @@
   var form = root.querySelector('.ft');
   var input = root.querySelector('.ft input');
   var closeBtn = root.querySelector('.x');
+  var vbtn = root.querySelector('.vbtn');
+  var micBtn = root.querySelector('.mic');
   var greeted = false;
+  var voiceOn = false;
+  var LANG = cfg.lang || 'en-IN';
 
   function addMsg(text, who, extraClass) {
     var row = document.createElement('div');
@@ -92,8 +109,71 @@
   launch.addEventListener('click', function () { toggle(!panel.classList.contains('open')); });
   closeBtn.addEventListener('click', function () { toggle(false); });
 
-  // Outbound (Veda + human-agent) messages are rendered via polling, keyed by id
-  // so nothing shows twice. lastSeen starts at "now" so we don't replay history.
+  // --- Voice (speech ↔ speech) ---------------------------------------------
+  var audioEl = null;
+
+  function browserSpeak(text) {
+    try {
+      var u = new SpeechSynthesisUtterance(text);
+      u.lang = LANG;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+    } catch (e) { /* no TTS available */ }
+  }
+
+  // Speak via ElevenLabs (through our backend); fall back to the browser voice.
+  function speak(text) {
+    fetch(API + '/chat/tts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text }),
+    })
+      .then(function (r) { return r.status === 200 ? r.blob() : null; })
+      .then(function (blob) {
+        if (blob && blob.size > 0) {
+          if (audioEl) { try { audioEl.pause(); } catch (e) {} }
+          audioEl = new Audio(URL.createObjectURL(blob));
+          audioEl.play().catch(function () { browserSpeak(text); });
+        } else {
+          browserSpeak(text);
+        }
+      })
+      .catch(function () { browserSpeak(text); });
+  }
+
+  function setVoice(on) {
+    voiceOn = on;
+    vbtn.classList.toggle('on', on);
+    if (!on && audioEl) { try { audioEl.pause(); } catch (e) {} }
+    if (!on) { try { window.speechSynthesis.cancel(); } catch (e) {} }
+  }
+  vbtn.addEventListener('click', function () { setVoice(!voiceOn); });
+
+  // Speech-to-text via the browser. Talking turns voice replies on (speech↔speech).
+  function getRecognition() {
+    var w = window;
+    var Ctor = w.SpeechRecognition || w.webkitSpeechRecognition;
+    return Ctor ? new Ctor() : null;
+  }
+  var recognizing = false;
+  micBtn.addEventListener('click', function () {
+    var rec = getRecognition();
+    if (!rec) { input.placeholder = 'Voice input not supported here — please type.'; return; }
+    if (recognizing) { try { rec.stop(); } catch (e) {} return; }
+    rec.lang = LANG;
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    rec.onstart = function () { recognizing = true; micBtn.classList.add('live'); };
+    rec.onerror = function () { recognizing = false; micBtn.classList.remove('live'); };
+    rec.onend = function () { recognizing = false; micBtn.classList.remove('live'); };
+    rec.onresult = function (e) {
+      var t = e.results[0][0].transcript;
+      setVoice(true);          // you spoke → Veda speaks back
+      sendText(t);
+    };
+    try { rec.start(); } catch (e) {}
+  });
+
+  // --- Messaging ------------------------------------------------------------
   var seen = {};
   var lastSeen = new Date().toISOString();
   var pollTimer = null;
@@ -108,40 +188,36 @@
           seen[m.id] = true;
           addMsg(m.body, 'veda');
           lastSeen = m.occurredAt;
+          if (voiceOn) speak(m.body);
         });
       })
       .catch(function () {});
   }
 
-  form.addEventListener('submit', function (e) {
-    e.preventDefault();
-    var text = input.value.trim();
+  function sendText(text) {
+    text = (text || '').trim();
     if (!text) return;
     input.value = '';
     addMsg(text, 'me');
     var typing = addMsg('Veda is typing…', 'veda', 'typing');
-
     fetch(API + '/chat/message', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sessionId: sessionId, message: text }),
     })
       .then(function (r) { return r.json(); })
-      .then(function () {
-        typing.remove();
-        return drainNew(); // pulls Veda's (or the agent's) reply, deduped by id
-      })
+      .then(function () { typing.remove(); return drainNew(); })
       .catch(function () {
         typing.remove();
         addMsg('Sorry, I couldn’t connect just now. Please try again in a moment.', 'veda');
       });
-  });
+  }
+
+  form.addEventListener('submit', function (e) { e.preventDefault(); sendText(input.value); });
 
   function toggle(open) {
     panel.classList.toggle('open', open);
     if (open && !greeted) { greeted = true; addMsg(GREETING, 'veda'); }
     if (open) setTimeout(function () { input.focus(); }, 50);
-    // Poll for agent/Veda replies only while the panel is open.
     if (open && !pollTimer) pollTimer = setInterval(drainNew, 5000);
     if (!open && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   }

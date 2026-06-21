@@ -16,6 +16,7 @@ import { VoiceProvider } from './channels/voice.provider';
 import { VoiceService } from './channels/voice.service';
 import { EmailInboundService } from './channels/email-inbound.service';
 import { LeadIntakeService } from './channels/lead-intake.service';
+import { ElevenLabsProvider } from './channels/eleven-labs.provider';
 import { MetaWebhookController } from './channels/meta-webhook.controller';
 import { LeadIntakeController } from './channels/lead-intake.controller';
 import { VapiWebhookController } from './channels/vapi-webhook.controller';
@@ -50,6 +51,7 @@ import { NurtureScheduler } from './nurture/nurture.scheduler';
     VoiceService,
     EmailInboundService,
     LeadIntakeService,
+    ElevenLabsProvider,
     LeadQualifierService,
     EmailDrafterService,
     WhatsAppDrafterService,
