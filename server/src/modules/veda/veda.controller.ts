@@ -7,6 +7,7 @@ import { VedaConfigService } from './veda-config.service';
 import { VedaApprovalService } from './veda-approval.service';
 import { VedaLogService } from './veda-log.service';
 import { CommandService } from './agents/command.service';
+import { EmailProvider } from './ai/email.provider';
 import {
   UpdateVedaConfigDto,
   ReviewApprovalDto,
@@ -24,7 +25,22 @@ export class VedaController {
     private readonly approvals: VedaApprovalService,
     private readonly logs: VedaLogService,
     private readonly command: CommandService,
+    private readonly email: EmailProvider,
   ) {}
+
+  // Send a test email to verify the outbound email config (SMTP/Resend). ADMIN only.
+  @Post('test-email')
+  @Roles('ADMIN')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  async testEmail(@Body() body: { to?: string }, @CurrentUser() user: AuthUser) {
+    const to = body.to?.trim() || user.email;
+    const result = await this.email.send({
+      to,
+      subject: 'Veda test email — Shreevan Wellness',
+      body: 'Namaste 🌿\n\nThis is a test email from Veda to confirm email sending is working.\nIf you received this, your email setup is live.\n\n— Veda · Shreevan Wellness',
+    });
+    return { to, ...result };
+  }
 
   // Voice/text command — any authenticated team member.
   @Post('command')
