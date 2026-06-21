@@ -42,7 +42,7 @@ export class ChatController {
     if (!text || !this.tts.isConfigured()) { res.status(204).end(); return; }
     const audio = await this.tts.speak(text);
     if (!audio) { res.status(204).end(); return; }
-    res.set({ 'Content-Type': 'audio/mpeg', 'Content-Length': String(audio.length), 'Cache-Control': 'no-store' });
+    res.status(200).set({ 'Content-Type': 'audio/mpeg', 'Content-Length': String(audio.length), 'Cache-Control': 'no-store' });
     res.send(audio);
   }
 

@@ -127,7 +127,7 @@
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: text }),
     })
-      .then(function (r) { return r.status === 200 ? r.blob() : null; })
+      .then(function (r) { return r.ok ? r.blob() : null; })
       .then(function (blob) {
         if (blob && blob.size > 0) {
           if (audioEl) { try { audioEl.pause(); } catch (e) {} }
