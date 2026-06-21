@@ -342,6 +342,10 @@ model Conversation {
   enquiry                Enquiry?           @relation(fields: [enquiryId], references: [id])
   externalConversationId String?
   subject                String?
+  // Live-chat agent controls: when handed to a human, Veda stops auto-replying.
+  handoverToHuman        Boolean            @default(false)
+  needsAttention         Boolean            @default(false)
+  attentionReason        String?
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
 
@@ -349,6 +353,7 @@ model Conversation {
 
   @@index([contactId])
   @@index([enquiryId])
+  @@index([channel])
 }
 
 model Message {

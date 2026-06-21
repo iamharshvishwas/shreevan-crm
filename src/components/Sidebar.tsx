@@ -15,6 +15,7 @@ const ROLE_LABEL: Record<string, string> = {
 const NAV: { key: ScreenKey; label: string; icon: JSX.Element }[] = [
   { key: 'overview', label: 'Overview', icon: <Ic parts={[{ r: [3, 3, 7, 9, 1.5] }, { r: [14, 3, 7, 5, 1.5] }, { r: [14, 12, 7, 9, 1.5] }, { r: [3, 16, 7, 5, 1.5] }]} /> },
   { key: 'enquiries', label: 'Enquiries', icon: <Ic parts={['M22 12h-6l-2 3h-4l-2-3H2', 'M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z']} /> },
+  { key: 'livechat', label: 'Live Chat', icon: <Ic parts={['M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z']} /> },
   { key: 'leads', label: 'Leads', icon: <Ic parts={['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', { c: [9, 7, 4] }, 'M22 21v-2a4 4 0 0 0-3-3.87', 'M16 3.13a4 4 0 0 1 0 7.75']} /> },
   { key: 'pipeline', label: 'Booking Pipeline', icon: <Ic parts={[{ r: [3, 3, 18, 18, 2] }, 'M8 7v9', 'M12 7v5', 'M16 7v7']} /> },
   { key: 'tasks', label: 'Tasks & Follow-ups', icon: <Ic parts={['m3 17 2 2 4-4', 'm3 7 2 2 4-4', 'M13 6h8', 'M13 12h8', 'M13 18h8']} /> },

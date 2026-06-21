@@ -89,14 +89,29 @@
     return row;
   }
 
-  function toggle(open) {
-    panel.classList.toggle('open', open);
-    if (open && !greeted) { greeted = true; addMsg(GREETING, 'veda'); }
-    if (open) setTimeout(function () { input.focus(); }, 50);
-  }
-
   launch.addEventListener('click', function () { toggle(!panel.classList.contains('open')); });
   closeBtn.addEventListener('click', function () { toggle(false); });
+
+  // Outbound (Veda + human-agent) messages are rendered via polling, keyed by id
+  // so nothing shows twice. lastSeen starts at "now" so we don't replay history.
+  var seen = {};
+  var lastSeen = new Date().toISOString();
+  var pollTimer = null;
+
+  function drainNew() {
+    return fetch(API + '/chat/messages?sessionId=' + encodeURIComponent(sessionId) + '&since=' + encodeURIComponent(lastSeen))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var msgs = (data && data.messages) || [];
+        msgs.forEach(function (m) {
+          if (seen[m.id]) return;
+          seen[m.id] = true;
+          addMsg(m.body, 'veda');
+          lastSeen = m.occurredAt;
+        });
+      })
+      .catch(function () {});
+  }
 
   form.addEventListener('submit', function (e) {
     e.preventDefault();
@@ -112,13 +127,22 @@
       body: JSON.stringify({ sessionId: sessionId, message: text }),
     })
       .then(function (r) { return r.json(); })
-      .then(function (data) {
+      .then(function () {
         typing.remove();
-        addMsg((data && data.reply) || 'Thank you 🌿 our team will be in touch shortly.', 'veda');
+        return drainNew(); // pulls Veda's (or the agent's) reply, deduped by id
       })
       .catch(function () {
         typing.remove();
         addMsg('Sorry, I couldn’t connect just now. Please try again in a moment.', 'veda');
       });
   });
+
+  function toggle(open) {
+    panel.classList.toggle('open', open);
+    if (open && !greeted) { greeted = true; addMsg(GREETING, 'veda'); }
+    if (open) setTimeout(function () { input.focus(); }, 50);
+    // Poll for agent/Veda replies only while the panel is open.
+    if (open && !pollTimer) pollTimer = setInterval(drainNew, 5000);
+    if (!open && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
 })();

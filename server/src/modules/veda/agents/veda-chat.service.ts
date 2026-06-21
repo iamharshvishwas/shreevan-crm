@@ -41,6 +41,9 @@ export class VedaChatService {
     });
     if (!conversation) return { reply: null };
 
+    // A human has taken over this chat — Veda stays silent here.
+    if (conversation.handoverToHuman) return { reply: null };
+
     // Don't reply if the most recent message is already from us (avoid loops).
     const ordered = [...conversation.messages].reverse();
     const last = ordered[ordered.length - 1];
@@ -72,8 +75,12 @@ export class VedaChatService {
           occurredAt: new Date(),
         },
       });
-      // Touch the conversation so it sorts to the top of the inbox.
-      await this.prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
+      // Touch the conversation + raise a hand if Veda seems unsure or the client wants a human.
+      const attention = detectAttention(last?.body ?? '', reply);
+      await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { updatedAt: new Date(), ...(attention ? { needsAttention: true, attentionReason: attention } : {}) },
+      });
 
       await this.logs.write({
         type: 'CHAT_REPLY', status: 'COMPLETED', entityType: 'Conversation', entityId: conversationId,
@@ -129,4 +136,21 @@ STRICT RULES:
 - Don't quote exact prices unless asked; if asked, you may share program pricing ranges, but encourage a call for a tailored recommendation.
 - Never make medical or outcome promises. Be honest if you don't know something and offer to have the team follow up.${kbBlock}`;
   }
+}
+
+/**
+ * Lightweight heuristic to raise a hand for human review:
+ *  - the visitor explicitly asks for a person, or
+ *  - Veda's reply signals uncertainty / a hand-off to "the team".
+ */
+function detectAttention(userText: string, vedaReply: string): string | null {
+  const u = userText.toLowerCase();
+  if (/\b(human|agent|person|representative|real person|someone|insaan|vyakti)\b/.test(u) || /baat kar/.test(u) && /(team|insaan|human)/.test(u)) {
+    return 'Client may want to speak to a person';
+  }
+  const r = vedaReply.toLowerCase();
+  if (/(team will|i'?ll have the team|have our team|team se confirm|confirm with the team|get back to you|i'?m not sure|i do not know|i don'?t know|can'?t answer)/.test(r)) {
+    return 'Veda was unsure / deferred to the team';
+  }
+  return null;
 }

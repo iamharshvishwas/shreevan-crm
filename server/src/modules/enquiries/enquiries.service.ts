@@ -33,7 +33,9 @@ export class EnquiriesService {
       where.status = { in: [EnquiryStatus.NEEDS_REPLY, EnquiryStatus.WAITING_FOR_CUSTOMER] };
     } else where.status = { not: EnquiryStatus.SPAM };
 
-    if (dto.channel) where.channel = dto.channel;
+    // Website live chats live in the dedicated Live Chat tab, not Enquiries.
+    if (dto.channel && dto.channel !== Channel.WEBSITE_CHAT) where.channel = dto.channel;
+    else where.channel = { not: Channel.WEBSITE_CHAT };
     if (dto.ownerId) where.ownerId = dto.ownerId;
     if (dto.priority) where.priority = dto.priority;
     if (dto.q) {
@@ -58,7 +60,7 @@ export class EnquiriesService {
 
   private async listSlaBreached(dto: ListEnquiriesDto): Promise<Paginated<unknown>> {
     const rows = await this.prisma.enquiry.findMany({
-      where: { status: EnquiryStatus.NEEDS_REPLY, firstRespondedAt: null },
+      where: { status: EnquiryStatus.NEEDS_REPLY, firstRespondedAt: null, channel: { not: Channel.WEBSITE_CHAT } },
       include: { contact: { select: { name: true, country: true } }, slaPolicy: true },
       orderBy: { lastInboundAt: 'asc' },
     });

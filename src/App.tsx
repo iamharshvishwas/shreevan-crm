@@ -15,6 +15,7 @@ import { Reports } from './screens/Reports';
 import { Settings } from './screens/Settings';
 import { Tasks } from './screens/Tasks';
 import { Veda } from './screens/Veda';
+import { LiveChat } from './screens/LiveChat';
 import { Login } from './screens/Login';
 import { useAppStore } from './store';
 import { useAuth, type AuthStore } from './auth/useAuth';
@@ -53,13 +54,15 @@ function AuthedApp({ auth }: { auth: AuthStore }) {
         return <Settings app={app} />;
       case 'veda':
         return <Veda app={app} />;
+      case 'livechat':
+        return <LiveChat app={app} />;
       default:
         return <Overview app={app} />;
     }
   }
 
   // The pipeline board and the inbox manage their own internal scroll/height.
-  const fillHeight = (app.screen === 'pipeline' || app.screen === 'enquiries') && !app.selectedLeadId;
+  const fillHeight = (app.screen === 'pipeline' || app.screen === 'enquiries' || app.screen === 'livechat') && !app.selectedLeadId;
 
   return (
     <div
