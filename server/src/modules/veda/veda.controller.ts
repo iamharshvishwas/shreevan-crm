@@ -8,6 +8,8 @@ import { VedaApprovalService } from './veda-approval.service';
 import { VedaLogService } from './veda-log.service';
 import { CommandService } from './agents/command.service';
 import { EmailProvider } from './ai/email.provider';
+import { VoiceProvider } from './channels/voice.provider';
+import { PrismaService } from '../../database/prisma.service';
 import {
   UpdateVedaConfigDto,
   ReviewApprovalDto,
@@ -26,7 +28,24 @@ export class VedaController {
     private readonly logs: VedaLogService,
     private readonly command: CommandService,
     private readonly email: EmailProvider,
+    private readonly voice: VoiceProvider,
+    private readonly prisma: PrismaService,
   ) {}
+
+  // Place a test voice call to verify the Vapi voice pipeline. ADMIN only.
+  @Post('test-call')
+  @Roles('ADMIN')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  async testCall(@Body() body: { to?: string }) {
+    const to = body.to?.trim();
+    if (!to) return { ok: false, error: 'Phone number required (E.164, e.g. +9198…).' };
+    // A throwaway DiscoveryCall so the end-of-call webhook can attach the transcript.
+    const call = await this.prisma.discoveryCall.create({
+      data: { scheduledAt: new Date(), timezone: 'Asia/Kolkata', status: 'SCHEDULED', prepNotes: 'Veda test call' },
+    });
+    const result = await this.voice.placeCall({ to, leadName: 'Veda Test', discoveryCallId: call.id });
+    return { to, callId: call.id, ...result };
+  }
 
   // Send a test email to verify the outbound email config (SMTP/Resend). ADMIN only.
   @Post('test-email')

@@ -143,6 +143,22 @@ export function Veda({ app }: { app: AppStore }) {
     }
   }
 
+  const [testingCall, setTestingCall] = useState(false);
+  async function placeTestCall() {
+    setTestingCall(true);
+    try {
+      const to = window.prompt('Place a test call to (E.164, e.g. +9198…):', '') ?? '';
+      if (!to.trim()) return;
+      const r = await vedaApi.testCall(to.trim());
+      if (r.error) app.showToastMsg(r.error);
+      else app.showToastMsg(r.simulated ? `Simulated (Vapi not configured): ${r.detail}` : `Calling ${r.to} now ✓ — transcript will appear in Discovery Calls`);
+    } catch {
+      app.showToastMsg('Test call failed — check Vapi settings / logs');
+    } finally {
+      setTestingCall(false);
+    }
+  }
+
   async function toggleGlobal(on: boolean) {
     if (!config || !isAdmin) return;
     setSaving(true);
@@ -304,14 +320,23 @@ export function Veda({ app }: { app: AppStore }) {
             <Toggle on={globalOn} onChange={toggleGlobal} disabled={saving} />
           </div>
           <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--sw-sand-100)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <div style={{ fontSize: 12.5, color: 'var(--sw-ink-400)' }}>Verify email sending (SMTP/Resend) with a quick test.</div>
-            <button
-              onClick={sendTestEmail}
-              disabled={testingEmail}
-              style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--sw-sand-200)', background: '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--sw-forest-800)', whiteSpace: 'nowrap', opacity: testingEmail ? 0.6 : 1 }}
-            >
-              {testingEmail ? 'Sending…' : 'Send test email'}
-            </button>
+            <div style={{ fontSize: 12.5, color: 'var(--sw-ink-400)' }}>Verify channels with a quick test.</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={sendTestEmail}
+                disabled={testingEmail}
+                style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--sw-sand-200)', background: '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--sw-forest-800)', whiteSpace: 'nowrap', opacity: testingEmail ? 0.6 : 1 }}
+              >
+                {testingEmail ? 'Sending…' : 'Send test email'}
+              </button>
+              <button
+                onClick={placeTestCall}
+                disabled={testingCall}
+                style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--sw-sand-200)', background: '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--sw-forest-800)', whiteSpace: 'nowrap', opacity: testingCall ? 0.6 : 1 }}
+              >
+                {testingCall ? 'Calling…' : 'Place test call'}
+              </button>
+            </div>
           </div>
         </Card>
       )}

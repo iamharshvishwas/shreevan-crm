@@ -101,6 +101,8 @@ export const vedaApi = {
   getAnalytics:   () => api.get<VedaAnalytics>('/veda/analytics'),
   testEmail:      (to?: string) =>
     api.post<{ to: string; delivered: boolean; simulated: boolean; detail: string }>('/veda/test-email', { to }),
+  testCall:       (to: string) =>
+    api.post<{ to?: string; placed?: boolean; simulated?: boolean; detail?: string; error?: string }>('/veda/test-call', { to }),
   // Knowledge base
   listKnowledge:  () => api.get<KnowledgeEntry[]>('/veda/knowledge'),
   createKnowledge: (body: { title: string; content: string; category?: string; tags?: string[]; active?: boolean }) =>
