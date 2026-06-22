@@ -33,6 +33,9 @@ export const envSchema = z.object({
   GMAIL_CLIENT_ID: z.string().optional(),
   GMAIL_CLIENT_SECRET: z.string().optional(),
   GMAIL_REFRESH_TOKEN: z.string().optional(),
+  // Inbound: Veda ONLY reads unread mail under this Gmail label. Unset = inbound OFF
+  // (prevents processing a whole personal inbox). Use 'INBOX' for a dedicated mailbox.
+  GMAIL_INBOUND_LABEL: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   VEDA_FROM_EMAIL: z.string().default('Veda · Shreevan Wellness <veda@shreevanwellness.com>'),
   // Shared secret for the inbound-email webhook (Postmark/Mailgun/SendGrid → /webhooks/email).

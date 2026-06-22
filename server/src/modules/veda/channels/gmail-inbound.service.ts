@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { ConfigService } from '@nestjs/config';
 import { VedaConfigService } from '../veda-config.service';
 import { VedaLogService } from '../veda-log.service';
 import { EmailInboundService } from './email-inbound.service';
-import { GmailClient, gmailHeader, extractPlainText } from './gmail.client';
+import { GmailClient, gmailHeader, extractPlainText, type GmailMessage } from './gmail.client';
 
-const QUERY = 'in:inbox is:unread -in:chats -from:me';
 const BATCH = 8;
 
 /**
@@ -18,6 +18,7 @@ export class GmailInboundService {
   private readonly logger = new Logger(GmailInboundService.name);
 
   constructor(
+    private readonly env: ConfigService,
     private readonly config: VedaConfigService,
     private readonly logs: VedaLogService,
     private readonly gmail: GmailClient,
@@ -29,6 +30,12 @@ export class GmailInboundService {
     if (!this.gmail.isConfigured()) return;
     if (!(await this.config.isGloballyEnabled())) return;
 
+    // Safety: inbound is OFF unless a label is set. Veda only reads mail under
+    // that label — never a whole personal inbox. (Use 'INBOX' for a dedicated mailbox.)
+    const label = this.env.get<string>('GMAIL_INBOUND_LABEL');
+    if (!label) return;
+    const query = `label:"${label}" is:unread -in:chats -from:me`;
+
     let token: string;
     try {
       token = await this.gmail.accessToken();
@@ -39,7 +46,7 @@ export class GmailInboundService {
 
     let ids: string[];
     try {
-      ids = await this.gmail.listIds(token, QUERY, BATCH);
+      ids = await this.gmail.listIds(token, query, BATCH);
     } catch (e) {
       // 403 here usually means the refresh token lacks the gmail.modify scope.
       this.logger.warn(`Gmail inbound list failed (scope?): ${(e as Error).message}`);
@@ -47,9 +54,17 @@ export class GmailInboundService {
     }
     if (!ids.length) return;
 
+    let processed = 0;
     for (const id of ids) {
       try {
         const msg = await this.gmail.getMessage(token, id);
+
+        // Never reply to newsletters, no-reply senders, mailing lists or auto-responders.
+        if (isAutomated(msg)) {
+          await this.gmail.markRead(token, id);
+          continue;
+        }
+
         const from = gmailHeader(msg, 'From') ?? '';
         const subject = gmailHeader(msg, 'Subject') ?? '';
         const { email, name } = parseFrom(from);
@@ -57,15 +72,28 @@ export class GmailInboundService {
 
         if (email && text) {
           await this.inbound.handle({ fromEmail: email, fromName: name, subject, text, messageId: msg.id });
+          processed++;
         }
-        await this.gmail.markRead(token, id); // always mark read so we don't loop
+        await this.gmail.markRead(token, id); // mark read so we don't loop
       } catch (e) {
         this.logger.error(`Gmail inbound message ${id} failed: ${(e as Error).message}`);
         await this.gmail.markRead(token, id).catch(() => undefined);
       }
     }
-    await this.logs.write({ type: 'EMAIL_INBOUND', status: 'COMPLETED', output: { processed: ids.length } as object, completedAt: new Date() });
+    if (processed) await this.logs.write({ type: 'EMAIL_INBOUND', status: 'COMPLETED', output: { processed } as object, completedAt: new Date() });
   }
+}
+
+/** Skip bulk/automated mail (newsletters, notifications, no-reply, auto-responders). */
+function isAutomated(msg: GmailMessage): boolean {
+  const from = (gmailHeader(msg, 'From') ?? '').toLowerCase();
+  if (/no-?reply|do-?not-?reply|donotreply|mailer-daemon|postmaster/.test(from)) return true;
+  if (gmailHeader(msg, 'List-Unsubscribe') || gmailHeader(msg, 'List-Id')) return true; // mailing list / marketing
+  const prec = (gmailHeader(msg, 'Precedence') ?? '').toLowerCase();
+  if (prec === 'bulk' || prec === 'list' || prec === 'junk') return true;
+  const auto = (gmailHeader(msg, 'Auto-Submitted') ?? '').toLowerCase();
+  if (auto && auto !== 'no') return true; // out-of-office / auto-replies
+  return false;
 }
 
 /** Parse "Name <email>" or a bare address. */
