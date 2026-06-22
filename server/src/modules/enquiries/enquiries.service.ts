@@ -208,6 +208,67 @@ export class EnquiriesService {
     });
   }
 
+  /**
+   * Flexible website-form intake — accepts ANY form's fields. Recognises the
+   * common ones (name/email/phone/message/country/program), preserves the rest
+   * in the message, tags it with the form name, and runs it through ingestion so
+   * it lands in Enquiries. Honeypot field → silently ignored (bot).
+   */
+  async createFormSubmission(body: Record<string, unknown>) {
+    const str = (...keys: string[]): string | undefined => {
+      for (const k of keys) {
+        const v = body[k];
+        if (typeof v === 'string' && v.trim()) return v.trim();
+      }
+      return undefined;
+    };
+
+    // Honeypot: bots fill hidden fields. Pretend success, but don't ingest.
+    if (str('_hp', 'honeypot', '_gotcha', 'bot_field')) return { ok: true };
+
+    const name = str('name', 'full_name', 'fullName', 'Name') ?? 'Website enquiry';
+    const email = str('email', 'Email', 'emailAddress', 'email_address');
+    const phone = str('phone', 'Phone', 'phone_number', 'phoneNumber', 'mobile', 'contact');
+    const message = str('message', 'Message', 'enquiry', 'comments', 'comment', 'details', 'query', 'notes');
+    const country = str('country', 'Country');
+    const program = str('program', 'programInterest', 'program_interest', 'interest');
+    const formName = str('form', 'formName', 'form_name', 'formId', 'form_id', 'subject') ?? 'Website form';
+
+    const handled = new Set([
+      '_hp', 'honeypot', '_gotcha', 'bot_field', 'name', 'full_name', 'fullName', 'Name',
+      'email', 'Email', 'emailAddress', 'email_address', 'phone', 'Phone', 'phone_number',
+      'phoneNumber', 'mobile', 'contact', 'message', 'Message', 'enquiry', 'comments', 'comment',
+      'details', 'query', 'notes', 'country', 'Country', 'program', 'programInterest',
+      'program_interest', 'interest', 'form', 'formName', 'form_name', 'formId', 'form_id', 'subject',
+    ]);
+    const extras = Object.entries(body)
+      .filter(([k, v]) => !handled.has(k) && typeof v === 'string' && (v as string).trim())
+      .map(([k, v]) => `${k}: ${(v as string).trim()}`);
+
+    const fullMessage = [
+      message,
+      program ? `Program interest: ${program}` : '',
+      ...extras,
+    ].filter(Boolean).join('\n') || `New submission from "${formName}".`;
+
+    const connection = await this.connectionForChannel(Channel.WEBSITE_FORM);
+    const id = `form_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    await this.ingestion.ingest({
+      provider: Channel.WEBSITE_FORM,
+      connectionId: connection.id,
+      externalEventId: id,
+      externalConversationId: normalizeEmail(email) || normalizePhone(phone) || id,
+      externalMessageId: id,
+      direction: 'inbound',
+      sender: { providerIdentityId: normalizeEmail(email) || normalizePhone(phone) || id, displayName: name, email: email ?? null, phone: phone ?? null },
+      message: { type: 'text', text: fullMessage, attachments: [] },
+      attribution: { firstTouchSource: Channel.WEBSITE_FORM, campaign: formName },
+      occurredAt: new Date().toISOString(),
+      rawPayload: { form: formName, country, program, fields: body },
+    });
+    return { ok: true };
+  }
+
   /** Handoff: create a follow-up task linked to the enquiry (managed in Tasks). */
   async createTask(id: string, input: { title: string; type?: string; dueAt?: string }, actorId: string) {
     const enquiry = await this.prisma.enquiry.findUnique({ where: { id } });

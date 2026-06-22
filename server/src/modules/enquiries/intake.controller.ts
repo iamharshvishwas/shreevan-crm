@@ -19,12 +19,20 @@ export class IntakeController {
     private readonly config: ConfigService,
   ) {}
 
-  // --- Public website form ---
+  // --- Public website form (fixed schema) ---
   @Public()
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('intake/website')
   website(@Body() dto: WebsiteEnquiryDto) {
     return this.enquiries.createWebsite(dto);
+  }
+
+  // --- Public flexible form intake (any form, any fields) ---
+  @Public()
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Post('intake/form')
+  form(@Body() body: Record<string, unknown>) {
+    return this.enquiries.createFormSubmission(body);
   }
 
   // --- Authenticated manual phone/walk-in entry ---
