@@ -8,6 +8,7 @@ import { VedaLogService } from '../veda-log.service';
 import { EmailDrafterService } from '../agents/email-drafter.service';
 
 // Defensive extraction — Vapi's report shape has shifted across versions.
+interface VapiArtifactMessage { role?: string; message?: string; text?: string; content?: string }
 interface VapiMessage {
   type?: string;
   call?: {
@@ -16,12 +17,52 @@ interface VapiMessage {
     metadata?: { discoveryCallId?: string };
     customer?: { number?: string; name?: string };
   };
-  artifact?: { transcript?: string; recordingUrl?: string; recording?: { url?: string } };
+  artifact?: {
+    transcript?: string;
+    recordingUrl?: string;
+    recording?: { url?: string; stereoUrl?: string; mono?: { combinedUrl?: string } };
+    messages?: VapiArtifactMessage[];
+    messagesOpenAIFormatted?: VapiArtifactMessage[];
+  };
   analysis?: { summary?: string };
   summary?: string;
   transcript?: string;
   recordingUrl?: string;
+  recording?: { url?: string; stereoUrl?: string };
+  stereoRecordingUrl?: string;
   endedReason?: string;
+}
+
+/** Walk Vapi's possible transcript locations: artifact.transcript → artifact.messages → top-level. */
+function extractTranscript(m: VapiMessage): string {
+  if (m.artifact?.transcript?.trim()) return m.artifact.transcript;
+  const msgs = m.artifact?.messages ?? m.artifact?.messagesOpenAIFormatted ?? [];
+  if (Array.isArray(msgs) && msgs.length) {
+    const lines = msgs
+      .filter((x) => (x.role === 'bot' || x.role === 'assistant' || x.role === 'user') && (x.message || x.text || x.content))
+      .map((x) => {
+        const who = x.role === 'user' ? 'User' : 'Veda';
+        return `${who}: ${(x.message ?? x.text ?? x.content ?? '').toString().trim()}`;
+      })
+      .filter(Boolean);
+    if (lines.length) return lines.join('\n');
+  }
+  return (m.transcript ?? '').trim();
+}
+
+/** Walk Vapi's possible recording locations. */
+function extractRecordingUrl(m: VapiMessage): string | null {
+  return (
+    m.artifact?.recordingUrl ??
+    m.artifact?.recording?.url ??
+    m.artifact?.recording?.stereoUrl ??
+    m.artifact?.recording?.mono?.combinedUrl ??
+    m.recordingUrl ??
+    m.recording?.url ??
+    m.recording?.stereoUrl ??
+    m.stereoRecordingUrl ??
+    null
+  );
 }
 
 @Injectable()
@@ -36,10 +77,24 @@ export class VoiceService {
     private readonly emailDrafter: EmailDrafterService,
   ) {}
 
-  /** Handle a Vapi webhook message. Only end-of-call reports are processed. */
+  /** Handle a Vapi webhook message. */
   async handleMessage(message: VapiMessage): Promise<void> {
-    if (message.type !== 'end-of-call-report') return;
-    await this.processEndOfCall(message);
+    if (message.type === 'end-of-call-report') {
+      await this.processEndOfCall(message);
+    } else if (message.type === 'status-update' || message.type === 'recording-ready') {
+      // Vapi sometimes delivers the recording URL in a later status update.
+      await this.maybeSaveRecording(message);
+    }
+  }
+
+  /** Patch a discovery call with a recording URL that arrived after end-of-call. */
+  private async maybeSaveRecording(m: VapiMessage): Promise<void> {
+    const url = extractRecordingUrl(m);
+    const vapiCallId = m.call?.id;
+    if (!url || !vapiCallId) return;
+    await this.prisma.discoveryCall
+      .updateMany({ where: { externalCallId: vapiCallId, recordingUrl: null }, data: { recordingUrl: url } })
+      .catch(() => undefined);
   }
 
   private async processEndOfCall(m: VapiMessage): Promise<void> {
@@ -62,9 +117,9 @@ export class VoiceService {
       return;
     }
 
-    const rawTranscript = m.artifact?.transcript ?? m.transcript ?? '';
-    const rawSummary = m.analysis?.summary ?? m.summary ?? '';
-    const recordingUrl = m.artifact?.recordingUrl ?? m.artifact?.recording?.url ?? m.recordingUrl ?? null;
+    const rawTranscript = extractTranscript(m);
+    const rawSummary = (m.analysis?.summary ?? m.summary ?? '').trim();
+    const recordingUrl = extractRecordingUrl(m);
 
     // Domain rule: NEVER store medical/health detail — redact before persisting.
     const [transcript, summary] = await Promise.all([
@@ -90,9 +145,21 @@ export class VoiceService {
       }).catch(() => undefined);
     }
 
+    // Capture which Vapi fields actually arrived — invaluable for diagnosing
+    // missing transcript/recording when their payload shape changes.
+    const diag = {
+      recording: !!recordingUrl,
+      transcriptChars: rawTranscript.length,
+      summaryChars: rawSummary.length,
+      redaction: transcript.method,
+      endedReason: m.endedReason,
+      vapiKeys: Object.keys(m),
+      artifactKeys: m.artifact ? Object.keys(m.artifact) : [],
+      messagesCount: m.artifact?.messages?.length ?? 0,
+    };
     await this.logs.write({
       type: 'VOICE_COMPLETED', status: 'COMPLETED', entityType: 'DiscoveryCall', entityId: call.id,
-      output: { recording: !!recordingUrl, redaction: transcript.method, endedReason: m.endedReason } as object,
+      output: diag as object,
       durationMs: Date.now() - started, completedAt: new Date(),
     });
 
