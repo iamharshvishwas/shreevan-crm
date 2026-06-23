@@ -65,6 +65,10 @@ export const envSchema = z.object({
   VAPI_ASSISTANT_ID: z.string().optional(),       // optional pre-built assistant; else inline
   VAPI_WEBHOOK_SECRET: z.string().optional(),     // verifies X-Vapi-Signature header
   VAPI_VOICE_ID: z.string().default('elliot'),    // default voice
+  // Comma-separated brand/program words to boost in the STT transcriber and as
+  // pronunciation hints in the assistant prompt. Lets you tune for new programs
+  // without redeploying. Example: "Shreevan,Shreevan Wellness,Sattva".
+  VOICE_VOCAB_BOOST: z.string().default('Shreevan,Shreevan Wellness,Sattva,Veda,Ayurveda,sattvic,namaste,pranayama'),
 });
 
 export type Env = z.infer<typeof envSchema>;

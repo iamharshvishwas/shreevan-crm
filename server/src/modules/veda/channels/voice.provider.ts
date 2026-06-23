@@ -124,20 +124,41 @@ GOALS:
   }
 
   private baseAssistant(systemPrompt: string, firstMessage: string): Record<string, unknown> {
+    const vocab = this.vocabBoostList();
+    // Inject pronunciation guidance for brand/program words so the LLM speaks
+    // "Shreevan" correctly instead of mishearing/misspelling it.
+    const finalPrompt = vocab.length
+      ? `${systemPrompt}\n\nPRONUNCIATION:\n${vocab.map((w) => `- "${w}": pronounce clearly as a proper noun; never substitute or abbreviate.`).join('\n')}`
+      : systemPrompt;
+
+    const transcriber: Record<string, unknown> = {
+      provider: 'deepgram',
+      model: 'nova-2',
+      language: 'multi',
+    };
+    // Deepgram keyterm boosting helps the STT transcribe brand words right
+    // ("Shreevan" → "Shreevan", not "Shriwan"). Quietly ignored on older models.
+    if (vocab.length) transcriber.keyterm = vocab;
+
     return {
       firstMessage,
       model: {
         provider: 'openai',
         model: this.config.get<string>('OPENAI_MODEL') ?? 'gpt-4o-mini',
-        messages: [{ role: 'system', content: systemPrompt }],
+        messages: [{ role: 'system', content: finalPrompt }],
       },
       voice: { provider: 'vapi', voiceId: this.config.get<string>('VAPI_VOICE_ID') ?? 'elliot' },
-      // Multilingual transcription so Hindi + English are both captured.
-      transcriber: { provider: 'deepgram', model: 'nova-2', language: 'multi' },
+      transcriber,
       recordingEnabled: true,
       endCallFunctionEnabled: true,
       ...this.serverConfig(),
     };
+  }
+
+  /** Brand/program words to favour in STT + TTS. Configurable via VOICE_VOCAB_BOOST. */
+  private vocabBoostList(): string[] {
+    const raw = this.config.get<string>('VOICE_VOCAB_BOOST') ?? '';
+    return raw.split(',').map((s) => s.trim()).filter(Boolean);
   }
 }
 
