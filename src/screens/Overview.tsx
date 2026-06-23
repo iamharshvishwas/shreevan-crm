@@ -154,8 +154,8 @@ export function Overview({ app }: { app: AppStore }) {
                     <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--sw-stone-600)' }}>{new Intl.DateTimeFormat('en-GB', { month: 'short', timeZone: 'Asia/Kolkata' }).format(new Date(c.scheduledAt))}</div>
                   </div>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--sw-ink-900)' }}>{c.contact.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--sw-stone-600)', marginTop: 1 }}>{new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' }).format(new Date(c.scheduledAt))} IST · {c.contact.country ?? ''}</div>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--sw-ink-900)' }}>{c.contact?.name ?? 'Unknown caller'}</div>
+                    <div style={{ fontSize: 12, color: 'var(--sw-stone-600)', marginTop: 1 }}>{new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' }).format(new Date(c.scheduledAt))} IST · {c.contact?.country ?? ''}</div>
                   </div>
                 </div>
               ))}

@@ -42,12 +42,12 @@ export function Calls({ app }: { app: AppStore }) {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                     {c.lead ? (
-                      <button onClick={() => app.openLead(c.lead!.id)} className="hov-underline" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 14.5, fontWeight: 700, color: 'var(--sw-forest-900)' }}>{c.contact.name}</button>
-                    ) : <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--sw-forest-900)' }}>{c.contact.name}</span>}
+                      <button onClick={() => app.openLead(c.lead!.id)} className="hov-underline" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 14.5, fontWeight: 700, color: 'var(--sw-forest-900)' }}>{c.contact?.name ?? 'Unknown caller'}</button>
+                    ) : <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--sw-forest-900)' }}>{c.contact?.name ?? 'Unknown caller'}</span>}
                   </div>
-                  <div style={{ fontSize: 12.5, color: 'var(--sw-stone-600)', marginTop: 3 }}>{c.contact.country ?? '—'}</div>
+                  <div style={{ fontSize: 12.5, color: 'var(--sw-stone-600)', marginTop: 3 }}>{c.contact?.country ?? '—'}</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 9, fontSize: 12.5, fontWeight: 600, color: 'var(--sw-ink-900)' }}>
-                    <ClockIcon /> {istFirst(c.scheduledAt, c.contact.timezone)}
+                    <ClockIcon /> {istFirst(c.scheduledAt, c.contact?.timezone)}
                   </div>
                   {c.prepNotes && <div style={{ fontSize: 12, color: 'var(--sw-stone-600)', marginTop: 7, lineHeight: 1.5 }}>Prep: {c.prepNotes}</div>}
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -69,7 +69,7 @@ export function Calls({ app }: { app: AppStore }) {
                   <div key={c.id} style={{ padding: '13px 18px', borderBottom: i < data.completed.length - 1 ? '1px solid var(--sw-mist-100)' : 'none' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px,1fr) minmax(0,1.4fr) auto', alignItems: 'center', gap: 12 }}>
                       <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--sw-ink-900)', display: 'flex', alignItems: 'center', gap: 7 }}>
-                        {c.contact.name}
+                        {c.contact?.name ?? 'Unknown caller'}
                         {isVeda && <Pill bg="#e4efe8" fg="var(--sw-forest-900)" fontSize={10.5} padding="2px 8px">Veda AI call</Pill>}
                       </span>
                       <span style={{ fontSize: 12.5, color: 'var(--sw-ink-900)' }}>{c.summary ?? (c.outcome ? `Outcome: ${c.outcome}` : '—')}</span>

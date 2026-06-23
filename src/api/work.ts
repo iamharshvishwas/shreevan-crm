@@ -36,7 +36,7 @@ export interface DiscoveryCall {
   summary: string | null;
   transcriptRedacted: string | null;
   externalCallId: string | null;
-  contact: { name: string; country: string | null; timezone: string | null };
+  contact: { name: string; country: string | null; timezone: string | null } | null;
   owner: { name: string } | null;
   lead: { id: string } | null;
 }
