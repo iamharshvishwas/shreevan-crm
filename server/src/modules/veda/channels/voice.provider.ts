@@ -131,13 +131,15 @@ GOALS:
       ? `${systemPrompt}\n\nPRONUNCIATION:\n${vocab.map((w) => `- "${w}": pronounce clearly as a proper noun; never substitute or abbreviate.`).join('\n')}`
       : systemPrompt;
 
+    // nova-3 supports BOTH multilingual ('multi') AND keyterm boosting; nova-2
+    // would reject the keyterm field with a 400. Keep this on nova-3 (or flux).
     const transcriber: Record<string, unknown> = {
       provider: 'deepgram',
-      model: 'nova-2',
+      model: 'nova-3',
       language: 'multi',
     };
     // Deepgram keyterm boosting helps the STT transcribe brand words right
-    // ("Shreevan" → "Shreevan", not "Shriwan"). Quietly ignored on older models.
+    // ("Shreevan" → "Shreevan", not "Shriwan").
     if (vocab.length) transcriber.keyterm = vocab;
 
     return {
