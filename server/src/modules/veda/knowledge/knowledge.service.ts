@@ -26,6 +26,25 @@ export class KnowledgeService {
     });
   }
 
+  /** One-click: turn the active Programs into knowledge entries (skips duplicates by title). */
+  async importPrograms(): Promise<{ created: number }> {
+    const programs = await this.prisma.program.findMany({ where: { active: true }, orderBy: { durationDays: 'asc' } });
+    let created = 0;
+    for (const p of programs) {
+      const exists = await this.prisma.vedaKnowledge.findFirst({ where: { title: p.name } });
+      if (exists) continue;
+      const parts = [
+        p.durationDays ? `Duration: ${p.durationDays} days.` : '',
+        p.priceInrAmount ? `Price (India): ₹${(p.priceInrAmount / 100).toLocaleString('en-IN')}.` : '',
+        p.priceUsdAmount ? `Price (International): $${(p.priceUsdAmount / 100).toLocaleString('en-US')}.` : '',
+        p.descriptor ?? '',
+      ].filter(Boolean).join(' ');
+      await this.create({ title: p.name, category: 'Programs', content: parts || `${p.name} — details on request.` });
+      created++;
+    }
+    return { created };
+  }
+
   async create(input: KnowledgeInput) {
     const embedding = await this.embedFor(input);
     return this.strip(await this.prisma.vedaKnowledge.create({

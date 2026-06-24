@@ -110,4 +110,5 @@ export const vedaApi = {
   updateKnowledge: (id: string, body: Partial<{ title: string; content: string; category: string; tags: string[]; active: boolean }>) =>
     api.patch<KnowledgeEntry>(`/veda/knowledge/${id}`, body),
   deleteKnowledge: (id: string) => api.delete<{ ok: true }>(`/veda/knowledge/${id}`),
+  importPrograms:  () => api.post<{ created: number }>('/veda/knowledge/import-programs'),
 };

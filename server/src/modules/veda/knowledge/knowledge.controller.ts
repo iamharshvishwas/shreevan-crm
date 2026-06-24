@@ -37,6 +37,12 @@ export class KnowledgeController {
     return this.knowledge.create(dto);
   }
 
+  @Post('import-programs')
+  @Roles('ADMIN')
+  importPrograms() {
+    return this.knowledge.importPrograms();
+  }
+
   @Patch(':id')
   @Roles('ADMIN')
   update(@Param('id') id: string, @Body() dto: UpdateKnowledgeDto) {

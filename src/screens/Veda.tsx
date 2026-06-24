@@ -235,6 +235,27 @@ export function Veda({ app }: { app: AppStore }) {
     }
   }
 
+  async function editKnowledge(id: string, title: string, content: string, category: string) {
+    try {
+      const updated = await vedaApi.updateKnowledge(id, { title, content, category: category || undefined });
+      setKnowledge((prev) => prev.map((k) => (k.id === id ? updated : k)));
+      app.showToastMsg('Knowledge updated');
+    } catch {
+      app.showToastMsg('Failed to update knowledge');
+    }
+  }
+
+  async function importPrograms() {
+    try {
+      const r = await vedaApi.importPrograms();
+      const list = await vedaApi.listKnowledge().catch(() => knowledge);
+      setKnowledge(list);
+      app.showToastMsg(r.created > 0 ? `Imported ${r.created} program(s) into Veda` : 'Programs already imported');
+    } catch {
+      app.showToastMsg('Failed to import programs');
+    }
+  }
+
   if (loading) {
     return (
       <div style={{ padding: 40, textAlign: 'center', color: 'var(--sw-ink-400)', fontSize: 14 }}>
@@ -427,8 +448,10 @@ export function Veda({ app }: { app: AppStore }) {
             entries={knowledge}
             isAdmin={isAdmin}
             onAdd={addKnowledge}
+            onEdit={editKnowledge}
             onToggle={toggleKnowledge}
             onRemove={removeKnowledge}
+            onImportPrograms={importPrograms}
           />
         )}
 
@@ -602,67 +625,126 @@ function AnalyticsPanel({ a }: { a: VedaAnalytics | null }) {
 
 // --- Knowledge base ---------------------------------------------------------
 
+const KB_TEMPLATES: { title: string; category: string; scaffold: string }[] = [
+  { title: "What's included in a retreat", category: 'Programs', scaffold: 'Each retreat includes: accommodation, all sattvic meals, daily yoga & meditation sessions, wellness consultations, and … (list everything a guest gets).' },
+  { title: 'Pricing & payment', category: 'Pricing', scaffold: 'Programs range from ₹… to ₹…. Booking needs a deposit of …, balance due by …. We accept … . Refund window: … .' },
+  { title: 'Cancellation & refund policy', category: 'Policies', scaffold: 'Cancellations made … days before arrival: … refund. Within … days: … . Date changes: … .' },
+  { title: 'Daily schedule', category: 'Logistics', scaffold: 'A typical day: 6:30am pranayama, 8am breakfast, … , evening meditation. (Outline a sample day.)' },
+  { title: 'Travel & how to reach', category: 'Logistics', scaffold: 'Location: … . Nearest airport/station: … . Airport transfers: … . Best time to arrive: … .' },
+  { title: 'Food & dietary options', category: 'Logistics', scaffold: 'We serve sattvic vegetarian meals. We can accommodate: vegan, gluten-free, … . Please share dietary needs in advance.' },
+  { title: 'Who our retreats are for', category: 'About', scaffold: 'Our retreats are ideal for … . Suitable for beginners? … . Age range: … .' },
+];
+
 function KnowledgePanel({
-  entries, isAdmin, onAdd, onToggle, onRemove,
+  entries, isAdmin, onAdd, onEdit, onToggle, onRemove, onImportPrograms,
 }: {
   entries: KnowledgeEntry[];
   isAdmin: boolean;
   onAdd: (title: string, content: string, category: string) => void;
+  onEdit: (id: string, title: string, content: string, category: string) => void;
   onToggle: (e: KnowledgeEntry) => void;
   onRemove: (id: string) => void;
+  onImportPrograms: () => void;
 }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [category, setCategory] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '9px 11px', borderRadius: 8, fontSize: 13,
     border: '1px solid var(--sw-sand-200)', fontFamily: 'var(--font-body)', outline: 'none',
   };
 
+  function reset() { setTitle(''); setContent(''); setCategory(''); setEditingId(null); }
+
   function submit() {
     if (!title.trim() || !content.trim()) return;
-    onAdd(title.trim(), content.trim(), category.trim());
-    setTitle(''); setContent(''); setCategory('');
+    if (editingId) onEdit(editingId, title.trim(), content.trim(), category.trim());
+    else onAdd(title.trim(), content.trim(), category.trim());
+    reset();
   }
+
+  function useTemplate(t: { title: string; category: string; scaffold: string }) {
+    setEditingId(null);
+    setTitle(t.title); setCategory(t.category); setContent(t.scaffold);
+  }
+
+  function startEdit(e: KnowledgeEntry) {
+    setEditingId(e.id);
+    setTitle(e.title); setContent(e.content); setCategory(e.category ?? '');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  const canSubmit = !!title.trim() && !!content.trim();
 
   return (
     <div>
-      <div style={{ fontSize: 12.5, color: 'var(--sw-ink-400)', marginBottom: 16, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 12.5, color: 'var(--sw-ink-400)', marginBottom: 14, lineHeight: 1.5 }}>
         What Veda knows — programs, pricing, policies, FAQs. Veda pulls the most relevant entries into every chat, call, and email answer.
       </div>
 
       {isAdmin && (
-        <div style={{ border: '1px solid var(--sw-sand-200)', borderRadius: 10, padding: 16, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input style={{ ...inputStyle, flex: 2 }} placeholder="Title (e.g. 14-Day Foundations Program)" value={title} onChange={(e) => setTitle(e.target.value)} />
-            <input style={{ ...inputStyle, flex: 1 }} placeholder="Category (optional)" value={category} onChange={(e) => setCategory(e.target.value)} />
-          </div>
-          <textarea style={{ ...inputStyle, minHeight: 70, resize: 'vertical' }} placeholder="What should Veda know? (details, pricing, policy…)" value={content} onChange={(e) => setContent(e.target.value)} />
-          <div>
+        <>
+          {/* Quick start: import programs + topic templates */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 14 }}>
             <button
-              onClick={submit}
-              disabled={!title.trim() || !content.trim()}
-              style={{
-                padding: '8px 16px', borderRadius: 8, border: 'none',
-                cursor: title.trim() && content.trim() ? 'pointer' : 'default',
-                background: 'var(--sw-forest-700)', color: '#fff', fontSize: 13, fontWeight: 600,
-                opacity: title.trim() && content.trim() ? 1 : 0.5,
-              }}
+              onClick={onImportPrograms}
+              style={{ padding: '7px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', background: 'var(--sw-forest-700)', color: '#fff', fontSize: 12.5, fontWeight: 600 }}
             >
-              Add to Veda’s knowledge
+              ↓ Import my programs
             </button>
+            <span style={{ fontSize: 12, color: 'var(--sw-ink-400)' }}>or start from a topic:</span>
+            {KB_TEMPLATES.map((t) => (
+              <button
+                key={t.title}
+                onClick={() => useTemplate(t)}
+                style={{ padding: '6px 11px', borderRadius: 999, border: '1px solid var(--sw-sand-200)', background: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--sw-forest-800)' }}
+              >
+                {t.title}
+              </button>
+            ))}
           </div>
-        </div>
+
+          {/* Add / edit form */}
+          <div style={{ border: '1px solid var(--sw-sand-200)', borderRadius: 10, padding: 16, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 8, background: editingId ? 'var(--sw-sand-050)' : '#fff' }}>
+            {editingId && <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--sw-forest-700)' }}>EDITING ENTRY</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input style={{ ...inputStyle, flex: 2 }} placeholder="Title (e.g. 14-Day Foundations Program)" value={title} onChange={(e) => setTitle(e.target.value)} />
+              <input style={{ ...inputStyle, flex: 1 }} placeholder="Category (optional)" value={category} onChange={(e) => setCategory(e.target.value)} />
+            </div>
+            <textarea style={{ ...inputStyle, minHeight: 90, resize: 'vertical' }} placeholder="What should Veda know? (details, pricing, policy…)" value={content} onChange={(e) => setContent(e.target.value)} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={submit}
+                disabled={!canSubmit}
+                style={{
+                  padding: '8px 16px', borderRadius: 8, border: 'none',
+                  cursor: canSubmit ? 'pointer' : 'default',
+                  background: 'var(--sw-forest-700)', color: '#fff', fontSize: 13, fontWeight: 600,
+                  opacity: canSubmit ? 1 : 0.5,
+                }}
+              >
+                {editingId ? 'Save changes' : 'Add to Veda’s knowledge'}
+              </button>
+              {editingId && (
+                <button onClick={reset} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--sw-sand-200)', background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--sw-ink-400)' }}>
+                  Cancel
+                </button>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       {entries.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--sw-ink-400)', fontSize: 14 }}>
           <div style={{ fontSize: 32, marginBottom: 8 }}>📚</div>
-          No knowledge yet — add programs, pricing, and FAQs so Veda answers accurately.
+          No knowledge yet — click <b>“Import my programs”</b> above, or add pricing & FAQs so Veda answers accurately.
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: 11.5, color: 'var(--sw-ink-400)', fontWeight: 600 }}>{entries.length} entr{entries.length === 1 ? 'y' : 'ies'}</div>
           {entries.map((e) => (
             <div key={e.id} style={{ border: '1px solid var(--sw-sand-200)', borderRadius: 10, padding: 14, opacity: e.active ? 1 : 0.55 }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
@@ -675,6 +757,9 @@ function KnowledgePanel({
                 </div>
                 {isAdmin && (
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <button onClick={() => startEdit(e)} title="Edit" style={{ padding: '4px 10px', borderRadius: 7, border: '1px solid var(--sw-sand-200)', background: '#fff', cursor: 'pointer', fontSize: 11.5, fontWeight: 600, color: 'var(--sw-forest-800)' }}>
+                      Edit
+                    </button>
                     <button onClick={() => onToggle(e)} title={e.active ? 'Disable' : 'Enable'} style={{ padding: '4px 10px', borderRadius: 7, border: '1px solid var(--sw-sand-200)', background: '#fff', cursor: 'pointer', fontSize: 11.5, fontWeight: 600, color: 'var(--sw-ink-400)' }}>
                       {e.active ? 'On' : 'Off'}
                     </button>
