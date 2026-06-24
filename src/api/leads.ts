@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './client';
+import { useLiveResource } from './live';
 import type { Channel, Paginated } from './enquiries';
 import { CHANNEL_LABEL } from './enquiries';
 
@@ -112,33 +113,12 @@ export const leadsApi = {
 /* ---------- Hooks ---------- */
 
 export function useLeadsList(view: LeadView, ownerId: string, q: string) {
-  const [data, setData] = useState<Paginated<LeadListItem> | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const key = `${view}|${ownerId}|${q}`;
-  const reload = useCallback(() => {
-    setLoading(true); setError(null);
-    return leadsApi.list(view, ownerId, q).then(setData)
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load leads.'))
-      .finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-  useEffect(() => { void reload(); }, [reload]);
-  return { data, loading, error, reload };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useLiveResource(() => leadsApi.list(view, ownerId, q), [`${view}|${ownerId}|${q}`]);
 }
 
 export function usePipelineBoard() {
-  const [data, setData] = useState<BoardColumn[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const reload = useCallback(() => {
-    setLoading(true); setError(null);
-    return leadsApi.board().then(setData)
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load pipeline.'))
-      .finally(() => setLoading(false));
-  }, []);
-  useEffect(() => { void reload(); }, [reload]);
-  return { data, loading, error, reload };
+  return useLiveResource(() => leadsApi.board(), []);
 }
 
 export function useLead(id: string | null) {

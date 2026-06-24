@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './client';
+import { useLiveResource } from './live';
 
 /* ---------- Backend enums (uppercase) + display ---------- */
 
@@ -198,24 +199,8 @@ export function formatMoney(amount: number | null, currency: 'USD' | 'INR' | nul
 /* ---------- Hooks ---------- */
 
 export function useEnquiryList(params: ListParams) {
-  const [data, setData] = useState<Paginated<EnquiryListItem> | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const key = JSON.stringify(params);
-
-  const reload = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    return enquiriesApi
-      .list(params)
-      .then(setData)
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load enquiries.'))
-      .finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-
-  useEffect(() => { void reload(); }, [reload]);
-  return { data, loading, error, reload };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useLiveResource(() => enquiriesApi.list(params), [JSON.stringify(params)]);
 }
 
 export function useEnquiry(id: string | null) {
@@ -238,15 +223,12 @@ export function useEnquiry(id: string | null) {
   return { data, loading, error, reload };
 }
 
-/** Lightweight "needs action" count for the sidebar badge. */
+/** Lightweight "needs action" count for the sidebar badge (auto-refreshing). */
 export function useActionableCount(): { count: number; reload: () => void } {
-  const [count, setCount] = useState(0);
-  const reload = useCallback(() => {
-    enquiriesApi
-      .list({ view: 'needs_reply', page: 1 })
-      .then((r) => setCount(r.total))
-      .catch(() => { /* keep last value */ });
-  }, []);
-  useEffect(() => { reload(); }, [reload]);
-  return { count, reload };
+  const { data, reload } = useLiveResource(
+    () => enquiriesApi.list({ view: 'needs_reply', page: 1 }).then((r) => r.total),
+    [],
+    20_000,
+  );
+  return { count: data ?? 0, reload };
 }

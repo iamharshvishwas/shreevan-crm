@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
 import { api } from './client';
+import { useLiveResource } from './live';
 
 export interface Tally { label: string; count: number }
 
@@ -20,17 +20,7 @@ export interface Analytics {
 }
 
 export function useAnalytics() {
-  const [data, setData] = useState<Analytics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  function reload() {
-    setLoading(true); setError(null);
-    api.get<Analytics>('/reports/analytics').then(setData)
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load analytics.'))
-      .finally(() => setLoading(false));
-  }
-  useEffect(reload, []);
-  return { data, loading, error, reload };
+  return useLiveResource(() => api.get<Analytics>('/reports/analytics'), [], 30_000);
 }
 
 export function formatMins(mins: number | null): string {

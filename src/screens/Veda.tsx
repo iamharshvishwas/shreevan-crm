@@ -128,6 +128,14 @@ export function Veda({ app }: { app: AppStore }) {
 
   useEffect(() => { void load(); }, [load]);
 
+  // Live refresh: poll every 12s + on tab focus, so approvals/logs auto-update.
+  useEffect(() => {
+    const tick = () => { if (document.visibilityState === 'visible') void load(); };
+    const id = window.setInterval(tick, 12_000);
+    window.addEventListener('focus', tick);
+    return () => { window.clearInterval(id); window.removeEventListener('focus', tick); };
+  }, [load]);
+
   const [testingEmail, setTestingEmail] = useState(false);
   async function sendTestEmail() {
     setTestingEmail(true);

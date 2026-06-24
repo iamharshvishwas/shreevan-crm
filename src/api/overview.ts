@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
 import { api } from './client';
+import { useLiveResource } from './live';
 
 export interface OverviewResponse {
   metrics: {
@@ -16,27 +16,7 @@ export interface OverviewResponse {
 }
 
 export function useOverview() {
-  const [data, setData] = useState<OverviewResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  async function load(): Promise<void> {
-    setLoading(true);
-    setError(null);
-    try {
-      setData(await api.get<OverviewResponse>('/reports/overview'));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load metrics.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    void load();
-  }, []);
-
-  return { data, loading, error, reload: load };
+  return useLiveResource(() => api.get<OverviewResponse>('/reports/overview'), []);
 }
 
 /** Format integer minor units → a compact currency string ($49.0K / ₹7.5L). */

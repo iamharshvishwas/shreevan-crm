@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
 import { api } from './client';
+import { useLiveResource } from './live';
 
 export type TaskBucket = 'overdue' | 'today' | 'upcoming' | 'done';
 export type Priority = 'HIGH' | 'NORMAL' | 'LOW';
@@ -91,30 +91,6 @@ export const customersApi = {
   setOnboarding: (id: string, status: OnboardingStatus) => api.post(`/customers/${id}/onboarding`, { status }),
 };
 
-function useResource<T>(fetcher: () => Promise<T>) {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const reload = useCallback(() => {
-    setLoading(true); setError(null);
-    return fetcher().then(setData).catch((e) => setError(e instanceof Error ? e.message : 'Failed to load.')).finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useEffect(() => { void reload(); }, [reload]);
-  return { data, loading, error, reload };
-}
-
-export const useTasks = (ownerId: string) => {
-  const [data, setData] = useState<Task[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const reload = useCallback(() => {
-    setLoading(true); setError(null);
-    return tasksApi.list(ownerId).then(setData).catch((e) => setError(e instanceof Error ? e.message : 'Failed to load tasks.')).finally(() => setLoading(false));
-  }, [ownerId]);
-  useEffect(() => { void reload(); }, [reload]);
-  return { data, loading, error, reload };
-};
-
-export const useCalls = () => useResource(() => callsApi.list());
-export const useCustomers = () => useResource(() => customersApi.list());
+export const useTasks = (ownerId: string) => useLiveResource(() => tasksApi.list(ownerId), [ownerId]);
+export const useCalls = () => useLiveResource(() => callsApi.list());
+export const useCustomers = () => useLiveResource(() => customersApi.list());

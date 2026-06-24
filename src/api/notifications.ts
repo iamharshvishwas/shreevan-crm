@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { api } from './client';
+import { useLiveResource } from './live';
 
 export interface NotificationItem {
   id: string;
@@ -13,16 +14,13 @@ export interface NotificationItem {
 }
 
 export function useNotifications() {
-  const [items, setItems] = useState<NotificationItem[]>([]);
-  const reload = useCallback(() => {
-    api.get<NotificationItem[]>('/notifications').then(setItems).catch(() => { /* keep */ });
-  }, []);
-  useEffect(() => { reload(); }, [reload]);
+  const { data, reload } = useLiveResource(() => api.get<NotificationItem[]>('/notifications'), [], 20_000);
+  const items = data ?? [];
   const unread = items.filter((n) => !n.readAt).length;
   const markAllRead = useCallback(async () => {
-    try { await api.post('/notifications/read-all'); setItems((xs) => xs.map((n) => ({ ...n, readAt: n.readAt ?? new Date().toISOString() }))); }
+    try { await api.post('/notifications/read-all'); await reload(); }
     catch { /* ignore */ }
-  }, []);
+  }, [reload]);
   return { items, unread, reload, markAllRead };
 }
 
