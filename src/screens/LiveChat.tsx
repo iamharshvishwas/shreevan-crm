@@ -164,6 +164,16 @@ export function LiveChat({ app }: { app: AppStore }) {
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--sw-ink-900)' }}>{thread.visitor}</div>
                   <div style={{ fontSize: 12, color: 'var(--sw-ink-400)' }}>{thread.country ?? 'Website visitor'} · {thread.handoverToHuman ? 'You are handling' : 'Veda is handling'}</div>
+                  {(thread.email || thread.phone) && (
+                    <div style={{ display: 'flex', gap: 12, marginTop: 4, fontSize: 12, color: 'var(--sw-ink-600)', flexWrap: 'wrap' }}>
+                      {thread.email && <span title="Email">✉️ {thread.email}</span>}
+                      {thread.phone && (
+                        <a href={`https://wa.me/${thread.phone.replace(/[^\d]/g, '')}`} target="_blank" rel="noreferrer" title="Open in WhatsApp" style={{ color: '#15803d', textDecoration: 'none', fontWeight: 600 }}>
+                          📱 {thread.phone}
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div style={{ marginLeft: 'auto' }}>
                   {thread.handoverToHuman ? (

@@ -15,6 +15,11 @@ import { ChatMessageDto } from '../dto/veda.dto';
 
 const FALLBACK_REPLY = 'Thank you for reaching out to Shreevan Wellness 🌿 Our team will get back to you very shortly.';
 
+/** First handle of a given channel from a contact's identities (email / WhatsApp). */
+function pickIdentity(identities: { channel: Channel; handle: string }[] | undefined, channel: Channel): string | null {
+  return identities?.find((i) => i.channel === channel)?.handle ?? null;
+}
+
 /**
  * Public website live-chat endpoint. Each visitor message becomes a tracked
  * WEBSITE_CHAT enquiry (via the shared ingestion pipeline), then Veda replies.
@@ -63,7 +68,7 @@ export class ChatController {
         providerIdentityId: dto.sessionId,
         displayName: dto.name?.trim() || 'Website visitor',
         email: dto.email?.trim() || null,
-        phone: null,
+        phone: dto.phone?.trim() || null,
       },
       message: { type: 'text', text: dto.message },
       attribution: { firstTouchSource: Channel.WEBSITE_CHAT, campaign: null },
@@ -116,7 +121,7 @@ export class ChatController {
       orderBy: { updatedAt: 'desc' },
       take: 100,
       include: {
-        contact: { select: { name: true, country: true } },
+        contact: { select: { name: true, country: true, identities: { select: { channel: true, handle: true } } } },
         messages: { orderBy: { occurredAt: 'desc' }, take: 1, select: { body: true, direction: true, occurredAt: true } },
       },
     });
@@ -124,6 +129,8 @@ export class ChatController {
       id: c.id,
       visitor: c.contact?.name ?? 'Website visitor',
       country: c.contact?.country ?? null,
+      email: pickIdentity(c.contact?.identities, Channel.EMAIL),
+      phone: pickIdentity(c.contact?.identities, Channel.WHATSAPP),
       handoverToHuman: c.handoverToHuman,
       needsAttention: c.needsAttention,
       attentionReason: c.attentionReason,
@@ -139,7 +146,7 @@ export class ChatController {
     const convo = await this.prisma.conversation.findUnique({
       where: { id },
       include: {
-        contact: { select: { name: true, country: true } },
+        contact: { select: { name: true, country: true, identities: { select: { channel: true, handle: true } } } },
         messages: { orderBy: { occurredAt: 'asc' }, select: { id: true, body: true, direction: true, authorName: true, occurredAt: true } },
       },
     });
@@ -148,6 +155,8 @@ export class ChatController {
       id: convo.id,
       visitor: convo.contact?.name ?? 'Website visitor',
       country: convo.contact?.country ?? null,
+      email: pickIdentity(convo.contact?.identities, Channel.EMAIL),
+      phone: pickIdentity(convo.contact?.identities, Channel.WHATSAPP),
       handoverToHuman: convo.handoverToHuman,
       needsAttention: convo.needsAttention,
       attentionReason: convo.attentionReason,
@@ -194,6 +203,8 @@ export class ChatController {
     });
     return { ok: true };
   }
+
+  // (helper defined at module scope below)
 
   private async getConnectionId(): Promise<string> {
     const existing = await this.prisma.channelConnection.findFirst({ where: { channel: Channel.WEBSITE_CHAT } });

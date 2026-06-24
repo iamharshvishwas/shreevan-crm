@@ -107,4 +107,5 @@ export class ChatMessageDto {
 
   @ApiPropertyOptional() @IsOptional() @IsString() name?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() email?: string;
+  @ApiPropertyOptional({ description: 'Visitor WhatsApp / phone number' }) @IsOptional() @IsString() phone?: string;
 }

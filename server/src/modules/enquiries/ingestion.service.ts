@@ -189,31 +189,78 @@ export class IngestionService {
     if (ev.sender.email) candidates.push({ channel: Channel.EMAIL, handle: normalizeEmail(ev.sender.email) });
     if (ev.sender.phone) candidates.push({ channel: Channel.WHATSAPP, handle: normalizePhone(ev.sender.phone) });
 
+    let contact: Contact | null = null;
     for (const c of candidates) {
       const id = await this.prisma.contactIdentity.findUnique({
         where: { channel_normalizedHandle: { channel: c.channel, normalizedHandle: normalizeHandle(c.channel, c.handle) } },
         include: { contact: true },
       });
-      if (id) return id.contact;
+      if (id) { contact = id.contact; break; }
     }
 
     // Create a new contact + its first identity. (Fuzzy duplicates become
     // review suggestions elsewhere — never auto-merged here.)
-    return this.prisma.contact.create({
-      data: {
-        name: ev.sender.displayName || 'Unknown enquirer',
-        firstTouchSource: ev.attribution.firstTouchSource,
-        identities: {
-          create: {
-            channel: ev.provider,
-            handle: ev.sender.providerIdentityId,
-            normalizedHandle: normalizeHandle(ev.provider, ev.sender.providerIdentityId),
-            displayName: ev.sender.displayName,
-            verified: ev.provider !== Channel.EMAIL,
+    if (!contact) {
+      contact = await this.prisma.contact.create({
+        data: {
+          name: ev.sender.displayName || 'Unknown enquirer',
+          firstTouchSource: ev.attribution.firstTouchSource,
+          identities: {
+            create: {
+              channel: ev.provider,
+              handle: ev.sender.providerIdentityId,
+              normalizedHandle: normalizeHandle(ev.provider, ev.sender.providerIdentityId),
+              displayName: ev.sender.displayName,
+              verified: ev.provider !== Channel.EMAIL,
+            },
           },
         },
-      },
-    });
+      });
+    }
+
+    // Enrich with any new details the sender provided (name they typed in the
+    // chat pre-form, email, WhatsApp). This is what makes each website chat a
+    // named, contactable lead — and lets a returning visitor link to the same
+    // contact across sessions via their email/phone.
+    return this.enrichContact(contact, ev);
+  }
+
+  /** Fill in a real name + attach email / WhatsApp identities when provided. */
+  private async enrichContact(contact: Contact, ev: NormalizedInboundEvent): Promise<Contact> {
+    let current = contact;
+
+    const provided = ev.sender.displayName?.trim();
+    if (provided && !isPlaceholderName(provided) && isPlaceholderName(current.name) && provided !== current.name) {
+      current = await this.prisma.contact.update({ where: { id: current.id }, data: { name: provided } });
+    }
+
+    // Attach email + phone as identities (idempotent). If the handle already
+    // exists (even on another contact) we leave it untouched — never steal it.
+    const extras: { channel: Channel; raw: string }[] = [];
+    if (ev.sender.email) extras.push({ channel: Channel.EMAIL, raw: ev.sender.email });
+    if (ev.sender.phone) extras.push({ channel: Channel.WHATSAPP, raw: ev.sender.phone });
+
+    for (const x of extras) {
+      const normalized = normalizeHandle(x.channel, x.raw);
+      if (!normalized) continue;
+      const existing = await this.prisma.contactIdentity.findUnique({
+        where: { channel_normalizedHandle: { channel: x.channel, normalizedHandle: normalized } },
+        select: { id: true },
+      });
+      if (existing) continue;
+      await this.prisma.contactIdentity.create({
+        data: {
+          contactId: current.id,
+          channel: x.channel,
+          handle: x.raw.trim(),
+          normalizedHandle: normalized,
+          displayName: provided || current.name,
+          verified: x.channel !== Channel.EMAIL,
+        },
+      });
+    }
+
+    return current;
   }
 
   private async routeOwner(tx: Prisma.TransactionClient, ev: NormalizedInboundEvent, contact: Contact): Promise<string | null> {
@@ -230,6 +277,12 @@ export class IngestionService {
     const policy = await tx.slaPolicy.findUnique({ where: { key } });
     return policy?.id ?? null;
   }
+}
+
+/** True for the generic placeholders we assign before a visitor identifies themselves. */
+function isPlaceholderName(name: string | null | undefined): boolean {
+  const n = (name ?? '').trim().toLowerCase();
+  return n === '' || n === 'website visitor' || n === 'unknown enquirer' || n === 'unknown';
 }
 
 /** Lightweight program-interest detection from the message text. */

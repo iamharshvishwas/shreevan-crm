@@ -4,6 +4,8 @@ export interface ChatConversationSummary {
   id: string;
   visitor: string;
   country: string | null;
+  email: string | null;
+  phone: string | null;
   handoverToHuman: boolean;
   needsAttention: boolean;
   attentionReason: string | null;
@@ -24,6 +26,8 @@ export interface ChatThread {
   id: string;
   visitor: string;
   country: string | null;
+  email: string | null;
+  phone: string | null;
   handoverToHuman: boolean;
   needsAttention: boolean;
   attentionReason: string | null;

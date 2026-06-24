@@ -16,13 +16,28 @@
   var API = (cfg.apiUrl || (script && script.getAttribute('data-api')) || 'https://api.shreevanwellness.com/api/v1').replace(/\/$/, '');
   var GREETING = cfg.greeting || 'Namaste 🌿 I’m Veda from Shreevan Wellness. How can I help you find your retreat today?';
 
-  // Stable per-visitor session id.
-  var KEY = 'veda_chat_session';
-  var sessionId = localStorage.getItem(KEY);
-  if (!sessionId) {
-    sessionId = (crypto && crypto.randomUUID ? crypto.randomUUID() : 'sess-' + Date.now() + '-' + Math.random().toString(36).slice(2));
-    localStorage.setItem(KEY, sessionId);
+  // --- Visitor identity + per-visit session --------------------------------
+  var SESSION_TTL = 6 * 60 * 60 * 1000; // start a fresh thread after 6h idle
+
+  function newId() {
+    return (crypto && crypto.randomUUID) ? crypto.randomUUID()
+      : 'sess-' + Date.now() + '-' + Math.random().toString(36).slice(2);
   }
+
+  // Rotate the session id when the visitor returns after a long gap, so each
+  // visit becomes its own conversation in the CRM (no more 4-day-old threads
+  // merging into today's window).
+  var sessionId = localStorage.getItem('veda_chat_session');
+  var lastTs = parseInt(localStorage.getItem('veda_chat_last') || '0', 10);
+  if (!sessionId || !lastTs || (Date.now() - lastTs) > SESSION_TTL) {
+    sessionId = newId();
+    localStorage.setItem('veda_chat_session', sessionId);
+  }
+  function touchSession() { localStorage.setItem('veda_chat_last', String(Date.now())); }
+
+  // Saved visitor profile (name / email / WhatsApp) — captured once, reused on return.
+  var profile = null;
+  try { profile = JSON.parse(localStorage.getItem('veda_chat_profile') || 'null'); } catch (e) { profile = null; }
 
   var FOREST = '#173D32', SAND = '#F7F4EC', INK = '#21302B', GOLD = '#C7A45A';
 
@@ -50,6 +65,17 @@
     '.ft .mic{flex:0 0 auto;background:#eef2f0;color:' + FOREST + ';border:1px solid #dfe7e3;border-radius:10px;padding:0 11px;cursor:pointer;display:flex;align-items:center}' +
     '.ft .mic.live{background:#c0392b;color:#fff;border-color:#c0392b;animation:vpulse 1.2s infinite}' +
     '@keyframes vpulse{0%,100%{opacity:1}50%{opacity:.55}}' +
+    '.gate{flex:1;overflow-y:auto;padding:22px 20px;background:' + SAND + ';display:none;flex-direction:column;gap:12px}' +
+    '.gate.show{display:flex}' +
+    '.gate .gt{font-weight:700;font-size:16px;color:' + INK + '}' +
+    '.gate .gs{font-size:12.5px;color:#6c7670;line-height:1.5;margin-bottom:4px}' +
+    '.gate label{font-size:11.5px;font-weight:600;color:' + INK + ';display:block;margin-bottom:3px}' +
+    '.gate .fld{margin-bottom:4px}' +
+    '.gate input{width:100%;border:1px solid #ddd;border-radius:10px;padding:10px 12px;font-size:14px;outline:none}' +
+    '.gate input:focus{border-color:' + FOREST + '}' +
+    '.gate .gerr{font-size:12px;color:#c0392b;min-height:14px}' +
+    '.gate .gbtn{border:none;background:' + FOREST + ';color:#fff;border-radius:10px;padding:11px 16px;font-size:14px;font-weight:700;cursor:pointer;margin-top:2px}' +
+    '.gate .gp{font-size:10.5px;color:#9aa39d;text-align:center;margin-top:2px}' +
     '.body{flex:1;overflow-y:auto;padding:16px;background:' + SAND + ';display:flex;flex-direction:column;gap:10px}' +
     '.row{display:flex;max-width:85%}' +
     '.row.me{align-self:flex-end;justify-content:flex-end}' +
@@ -73,6 +99,16 @@
           '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14"/></svg>' +
         '</button>' +
         '<button class="x" aria-label="Close">×</button></div>' +
+      '<form class="gate" novalidate>' +
+        '<div class="gt">Namaste 🌿</div>' +
+        '<div class="gs">A few quick details so Veda can help you and our team can follow up on your retreat.</div>' +
+        '<div class="fld"><label>Your name</label><input class="gname" type="text" autocomplete="name" placeholder="e.g. Priya Sharma"/></div>' +
+        '<div class="fld"><label>Email</label><input class="gemail" type="email" autocomplete="email" placeholder="you@example.com"/></div>' +
+        '<div class="fld"><label>WhatsApp number</label><input class="gphone" type="tel" autocomplete="tel" placeholder="+91 98xxxxxxxx"/></div>' +
+        '<div class="gerr"></div>' +
+        '<button type="submit" class="gbtn">Start chat with Veda</button>' +
+        '<div class="gp">Your details are kept private and used only to assist you.</div>' +
+      '</form>' +
       '<div class="body"></div>' +
       '<div class="brand">Powered by Veda · Shreevan Wellness</div>' +
       '<form class="ft">' +
@@ -87,12 +123,50 @@
   var bodyEl = root.querySelector('.body');
   var form = root.querySelector('.ft');
   var input = root.querySelector('.ft input');
+  var brandEl = root.querySelector('.brand');
   var closeBtn = root.querySelector('.x');
   var vbtn = root.querySelector('.vbtn');
   var micBtn = root.querySelector('.mic');
+  var gate = root.querySelector('.gate');
+  var gName = root.querySelector('.gname');
+  var gEmail = root.querySelector('.gemail');
+  var gPhone = root.querySelector('.gphone');
+  var gErr = root.querySelector('.gerr');
   var greeted = false;
   var voiceOn = false;
   var LANG = cfg.lang || 'en-IN';
+
+  // Show the lead form until we have a saved profile; then show the chat.
+  function chatUnlocked() { return !!(profile && profile.name); }
+  function showGate(on) {
+    gate.classList.toggle('show', on);
+    bodyEl.style.display = on ? 'none' : 'flex';
+    brandEl.style.display = on ? 'none' : 'block';
+    form.style.display = on ? 'none' : 'flex';
+  }
+
+  function firstName(n) { return (n || '').trim().split(/\s+/)[0] || ''; }
+
+  gate.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var name = (gName.value || '').trim();
+    var email = (gEmail.value || '').trim();
+    var phone = (gPhone.value || '').trim();
+    if (name.length < 2) { gErr.textContent = 'Please enter your name.'; gName.focus(); return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { gErr.textContent = 'Please enter a valid email.'; gEmail.focus(); return; }
+    if (phone.replace(/[^\d]/g, '').length < 8) { gErr.textContent = 'Please enter your WhatsApp number with country code.'; gPhone.focus(); return; }
+    gErr.textContent = '';
+    profile = { name: name, email: email, phone: phone };
+    try { localStorage.setItem('veda_chat_profile', JSON.stringify(profile)); } catch (e2) {}
+    showGate(false);
+    if (!greeted) {
+      greeted = true;
+      var hi = firstName(name);
+      addMsg((hi ? 'Namaste ' + hi + ' 🌿 ' : GREETING), 'veda');
+      if (hi) addMsg('I’m Veda from Shreevan Wellness. How can I help you find your retreat today?', 'veda');
+    }
+    setTimeout(function () { input.focus(); }, 50);
+  });
 
   function addMsg(text, who, extraClass) {
     var row = document.createElement('div');
@@ -197,12 +271,17 @@
   function sendText(text) {
     text = (text || '').trim();
     if (!text) return;
+    if (!chatUnlocked()) { showGate(true); gName.focus(); return; }
     input.value = '';
+    touchSession();
     addMsg(text, 'me');
     var typing = addMsg('Veda is typing…', 'veda', 'typing');
     fetch(API + '/chat/message', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: sessionId, message: text }),
+      body: JSON.stringify({
+        sessionId: sessionId, message: text,
+        name: profile && profile.name, email: profile && profile.email, phone: profile && profile.phone,
+      }),
     })
       .then(function (r) { return r.json(); })
       .then(function () { typing.remove(); return drainNew(); })
@@ -216,8 +295,20 @@
 
   function toggle(open) {
     panel.classList.toggle('open', open);
-    if (open && !greeted) { greeted = true; addMsg(GREETING, 'veda'); }
-    if (open) setTimeout(function () { input.focus(); }, 50);
+    if (open) {
+      if (!chatUnlocked()) {
+        showGate(true);
+        setTimeout(function () { gName.focus(); }, 50);
+      } else {
+        showGate(false);
+        if (!greeted) {
+          greeted = true;
+          var hi = firstName(profile.name);
+          addMsg(hi ? 'Namaste ' + hi + ' 🌿 How can I help you find your retreat today?' : GREETING, 'veda');
+        }
+        setTimeout(function () { input.focus(); }, 50);
+      }
+    }
     if (open && !pollTimer) pollTimer = setInterval(drainNew, 5000);
     if (!open && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   }
