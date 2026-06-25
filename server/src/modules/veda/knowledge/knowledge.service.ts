@@ -1,7 +1,21 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { OpenAiProvider } from '../ai/openai.provider';
-import { SHREEVAN_KNOWLEDGE_MD, parseKnowledgeMarkdown } from './shreevan-knowledge.seed';
+import { chunkPack, PACK_TAG } from './shreevan-pack';
+
+/** Titles from the retired v1 hand-written pack — pruned on the next seed run. */
+const V1_LEGACY_TITLES = [
+  'What is Shreevan Wellness', 'Our philosophy, vision and mission', 'Why choose Shreevan Wellness',
+  'Who our retreats are for', 'Programs at a glance — which retreat is right for you',
+  '3-Day Reset Retreat (Ganga Sattva Reset)', '7-Day Foundation Retreat', '14-Day Transformation Retreat',
+  '28-Day Inner Awakening — flagship (Sattva Ganga: 28 Days to Your True Self)', '60-Day Yogic Living Immersion',
+  '28-Day daily schedule', '28-Day weekly journey', '28-Day total experience', 'What you will experience',
+  'Transformation outcomes', 'Included live and online sessions', 'Program pricing', 'Payment terms',
+  'Where we are and how to reach us', 'Do I need prior yoga experience', 'Is the retreat religious',
+  'What is sattvic food and can you handle dietary needs', 'Can solo travelers join and what is the group size',
+  'What should I bring', 'Is airport pickup available', 'Refund and cancellation policy', 'Transfer policy',
+  'Health and wellness disclaimer', 'What happens after you book', 'Consultation and sales process',
+];
 
 export interface KnowledgeInput {
   title: string;
@@ -48,29 +62,53 @@ export class KnowledgeService {
 
   /**
    * Load (or refresh) the curated Shreevan Wellness knowledge pack into the RAG
-   * store. Upserts by title: new blocks are created, edited blocks are
-   * re-embedded, untouched ones are skipped. Safe to run repeatedly.
+   * store. Upserts by title (new entries created, edited ones re-embedded,
+   * unchanged ones skipped) and prunes stale pack entries plus the retired v1
+   * pack. Safe to run repeatedly. Manually-added entries are never touched.
    */
-  async seedShreevan(): Promise<{ created: number; updated: number; skipped: number }> {
-    const entries = parseKnowledgeMarkdown(SHREEVAN_KNOWLEDGE_MD);
+  async seedShreevan(): Promise<{ created: number; updated: number; skipped: number; removed: number }> {
+    const entries = chunkPack();
+    const wanted = new Set(entries.map((e) => e.title));
+
+    // Prune: anything tagged as a pack entry (or from the v1 pack) that the
+    // current pack no longer contains.
+    const managed = await this.prisma.vedaKnowledge.findMany({
+      where: { OR: [{ tags: { has: PACK_TAG } }, { title: { in: V1_LEGACY_TITLES } }] },
+      select: { id: true, title: true },
+    });
+    let removed = 0;
+    for (const m of managed) {
+      if (!wanted.has(m.title)) { await this.prisma.vedaKnowledge.delete({ where: { id: m.id } }).catch(() => undefined); removed++; }
+    }
+
     let created = 0, updated = 0, skipped = 0;
     for (const e of entries) {
       const existing = await this.prisma.vedaKnowledge.findFirst({ where: { title: e.title } });
       if (!existing) {
-        await this.create({ title: e.title, content: e.content, category: e.category });
+        const embedding = await this.embedFor(e);
+        await this.prisma.vedaKnowledge.create({
+          data: { title: e.title, content: e.content, category: e.category, tags: e.tags, active: true, embedding },
+        });
         created++;
         continue;
       }
-      if (existing.content === e.content && existing.category === e.category) { skipped++; continue; }
-      const embedding = await this.embedFor({ title: e.title, content: e.content });
+      const unchanged = existing.content === e.content && existing.category === e.category;
+      if (unchanged) {
+        if (!existing.tags.includes(PACK_TAG)) {
+          await this.prisma.vedaKnowledge.update({ where: { id: existing.id }, data: { tags: e.tags } });
+        }
+        skipped++;
+        continue;
+      }
+      const embedding = await this.embedFor(e);
       await this.prisma.vedaKnowledge.update({
         where: { id: existing.id },
-        data: { content: e.content, category: e.category, active: true, ...(embedding.length ? { embedding } : {}) },
+        data: { content: e.content, category: e.category, tags: e.tags, active: true, ...(embedding.length ? { embedding } : {}) },
       });
       updated++;
     }
-    this.logger.log(`Shreevan knowledge seed: ${created} created, ${updated} updated, ${skipped} unchanged.`);
-    return { created, updated, skipped };
+    this.logger.log(`Shreevan knowledge seed: ${created} created, ${updated} updated, ${skipped} unchanged, ${removed} pruned.`);
+    return { created, updated, skipped, removed };
   }
 
   async create(input: KnowledgeInput) {

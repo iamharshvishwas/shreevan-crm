@@ -111,5 +111,5 @@ export const vedaApi = {
     api.patch<KnowledgeEntry>(`/veda/knowledge/${id}`, body),
   deleteKnowledge: (id: string) => api.delete<{ ok: true }>(`/veda/knowledge/${id}`),
   importPrograms:  () => api.post<{ created: number }>('/veda/knowledge/import-programs'),
-  seedShreevan:    () => api.post<{ created: number; updated: number; skipped: number }>('/veda/knowledge/seed-shreevan'),
+  seedShreevan:    () => api.post<{ created: number; updated: number; skipped: number; removed: number }>('/veda/knowledge/seed-shreevan'),
 };

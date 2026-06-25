@@ -270,7 +270,7 @@ export function Veda({ app }: { app: AppStore }) {
       const r = await vedaApi.seedShreevan();
       const list = await vedaApi.listKnowledge().catch(() => knowledge);
       setKnowledge(list);
-      app.showToastMsg(`Shreevan knowledge loaded — ${r.created} new, ${r.updated} updated, ${r.skipped} unchanged`);
+      app.showToastMsg(`Shreevan knowledge loaded — ${r.created} new, ${r.updated} updated, ${r.skipped} unchanged${r.removed ? `, ${r.removed} pruned` : ''}`);
     } catch {
       app.showToastMsg('Failed to load Shreevan knowledge');
     }

@@ -5,6 +5,7 @@ import { OpenAiProvider, type ChatMessage } from '../ai/openai.provider';
 import { VedaConfigService } from '../veda-config.service';
 import { VedaLogService } from '../veda-log.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
+import { VEDA_OPERATING_RULES } from '../veda-operating-rules';
 
 const HISTORY_LIMIT = 16;
 
@@ -131,10 +132,7 @@ STYLE:
       ? 'This is an EMAIL reply: write 2-3 short paragraphs, greet by name if known, and sign off as "Warm regards,\\nVeda · Shreevan Wellness". Do not include a subject line.'
       : 'This is a live chat, so keep replies short (1-4 sentences). A light 🌿 occasionally is fine.'}
 
-STRICT RULES:
-- NEVER ask about, discuss, or store medical or health conditions, diagnoses, symptoms, or medications. If they raise health details, gently say our wellness team handles that privately and confidentially after they connect with us, then steer back.
-- Don't quote exact prices unless asked; if asked, you may share program pricing ranges, but encourage a call for a tailored recommendation.
-- Never make medical or outcome promises. Be honest if you don't know something and offer to have the team follow up.${kbBlock}`;
+${VEDA_OPERATING_RULES}${kbBlock}`;
   }
 }
 

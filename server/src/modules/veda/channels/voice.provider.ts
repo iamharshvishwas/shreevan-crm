@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { KnowledgeService } from '../knowledge/knowledge.service';
+import { VEDA_OPERATING_RULES } from '../veda-operating-rules';
 
 export interface PlaceCallInput {
   to: string;            // E.164 number
@@ -174,6 +175,4 @@ STYLE:
 - Speak in the caller's language — Hindi, English, or Hinglish — matching how they speak.
 - Calm, warm, premium, unhurried. Never pushy or salesy. Keep turns short and conversational.
 
-STRICT RULES:
-- NEVER ask about, discuss, or record any medical or health conditions, diagnoses, symptoms, or medications. If they raise health details, gently say our wellness team will handle that confidentially later, and move on.
-- Do not make promises about pricing or medical outcomes.`;
+${VEDA_OPERATING_RULES}`;
