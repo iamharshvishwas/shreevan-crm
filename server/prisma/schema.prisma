@@ -826,6 +826,38 @@ model VedaKnowledge {
   @@index([active])
 }
 
+/// Veda self-learning: questions Veda could not answer, and the knowledge it
+/// proposes to itself once an answer is captured.
+model VedaKnowledgeGap {
+  id             String        @id @default(uuid())
+  question       String        // the visitor question that was not covered
+  normalized     String        // lowercased/stripped, for de-duplication
+  channel        String?
+  conversationId String?
+  occurrences    Int           @default(1)
+  status         VedaGapStatus @default(OPEN)
+  capturedAnswer String?       // human answer captured from a takeover/reply
+  draftTitle     String?
+  draftContent   String?
+  draftCategory  String?
+  knowledgeId    String?       // resulting VedaKnowledge id once applied
+  reviewedBy     String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  resolvedAt     DateTime?
+
+  @@index([status])
+  @@index([normalized])
+}
+
+enum VedaGapStatus {
+  OPEN       // detected, no answer yet (occurrences grows on repeats)
+  ANSWERED   // a human answer was captured; ready to draft
+  PENDING    // drafted; awaiting approval (sensitive category)
+  APPLIED    // knowledge entry created (auto or after approval)
+  DISMISSED
+}
+
 enum NurtureStatus {
   ACTIVE
   COMPLETED

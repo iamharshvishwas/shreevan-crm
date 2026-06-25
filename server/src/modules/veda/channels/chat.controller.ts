@@ -8,6 +8,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { IngestionService } from '../../enquiries/ingestion.service';
 import { NormalizedInboundEvent } from '../../enquiries/dto/inbound-event.dto';
 import { VedaChatService } from '../agents/veda-chat.service';
+import { VedaLearningService } from '../agents/veda-learning.service';
 import { ElevenLabsProvider } from './eleven-labs.provider';
 import { Public, CurrentUser } from '../../../common/auth/decorators';
 import type { AuthUser } from '../../../common/auth/auth.types';
@@ -33,6 +34,7 @@ export class ChatController {
     private readonly ingestion: IngestionService,
     private readonly chat: VedaChatService,
     private readonly tts: ElevenLabsProvider,
+    private readonly learning: VedaLearningService,
   ) {}
 
   /**
@@ -201,6 +203,8 @@ export class ChatController {
       where: { id },
       data: { handoverToHuman: true, needsAttention: false, attentionReason: null, updatedAt: new Date() },
     });
+    // Self-learning: this human answer may resolve a question Veda couldn't.
+    void this.learning.captureAnswer(id, text);
     return { ok: true };
   }
 

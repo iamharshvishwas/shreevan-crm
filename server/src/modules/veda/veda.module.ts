@@ -28,6 +28,9 @@ import { LeadQualifierService } from './agents/lead-qualifier.service';
 import { EmailDrafterService } from './agents/email-drafter.service';
 import { WhatsAppDrafterService } from './agents/whatsapp-drafter.service';
 import { VedaChatService } from './agents/veda-chat.service';
+import { VedaLearningService } from './agents/veda-learning.service';
+import { VedaLearningScheduler } from './agents/veda-learning.scheduler';
+import { VedaLearningController } from './agents/veda-learning.controller';
 import { CommandService } from './agents/command.service';
 import { VedaSchedulerService } from './veda-scheduler.service';
 import { VedaExecutorService } from './veda-executor.service';
@@ -39,7 +42,7 @@ import { NurtureScheduler } from './nurture/nurture.scheduler';
 
 @Module({
   imports: [PrismaModule, LeadsModule, TasksModule, EnquiriesModule],
-  controllers: [VedaController, MetaWebhookController, VapiWebhookController, ChatController, EmailInboundController, KnowledgeController, LeadIntakeController],
+  controllers: [VedaController, MetaWebhookController, VapiWebhookController, ChatController, EmailInboundController, KnowledgeController, LeadIntakeController, VedaLearningController],
   providers: [
     VedaConfigService,
     VedaApprovalService,
@@ -60,6 +63,8 @@ import { NurtureScheduler } from './nurture/nurture.scheduler';
     EmailDrafterService,
     WhatsAppDrafterService,
     VedaChatService,
+    VedaLearningService,
+    VedaLearningScheduler,
     CommandService,
     VedaSchedulerService,
     VedaExecutorService,

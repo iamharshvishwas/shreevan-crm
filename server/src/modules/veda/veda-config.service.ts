@@ -17,6 +17,7 @@ const DEFAULT_CONFIG: VedaConfig = {
     VOICE_CALL:    { enabled: false, autoApprove: false },
     CHAT_REPLY:    { enabled: false, autoApprove: true  }, // chat is real-time; "auto" = replies instantly
     NURTURE:       { enabled: false, autoApprove: false }, // multi-touch follow-up cadence for cold leads
+    SELF_LEARN:    { enabled: true,  autoApprove: true  }, // learn from gaps; auto-apply safe entries, gate sensitive ones
   },
 };
 
@@ -27,7 +28,14 @@ export class VedaConfigService {
   async get(): Promise<VedaConfig> {
     const row = await this.prisma.systemSetting.findUnique({ where: { key: CONFIG_KEY } });
     if (!row) return { ...DEFAULT_CONFIG };
-    return { ...DEFAULT_CONFIG, ...(row.valueJson as Partial<VedaConfig>) };
+    const saved = row.valueJson as Partial<VedaConfig>;
+    // Deep-merge steps so newly-added steps (e.g. SELF_LEARN) keep their defaults
+    // even when an older config was saved before they existed.
+    return {
+      ...DEFAULT_CONFIG,
+      ...saved,
+      steps: { ...DEFAULT_CONFIG.steps, ...(saved.steps ?? {}) },
+    };
   }
 
   async update(dto: UpdateVedaConfigDto): Promise<VedaConfig> {

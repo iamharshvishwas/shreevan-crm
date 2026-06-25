@@ -5,6 +5,7 @@ import { OpenAiProvider, type ChatMessage } from '../ai/openai.provider';
 import { VedaConfigService } from '../veda-config.service';
 import { VedaLogService } from '../veda-log.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
+import { VedaLearningService } from './veda-learning.service';
 import { VEDA_OPERATING_RULES } from '../veda-operating-rules';
 
 const HISTORY_LIMIT = 16;
@@ -19,6 +20,7 @@ export class VedaChatService {
     private readonly config: VedaConfigService,
     private readonly logs: VedaLogService,
     private readonly knowledge: KnowledgeService,
+    private readonly learning: VedaLearningService,
   ) {}
 
   /**
@@ -88,6 +90,9 @@ export class VedaChatService {
         output: { channel: conversation.channel } as object,
         costUsdMicro: result.costUsdMicro, durationMs: Date.now() - started, completedAt: new Date(),
       });
+
+      // Self-learning: note questions Veda could not confidently answer.
+      void this.learning.observe({ question: last?.body ?? '', vedaReply: reply, kbHitCount: kb.length, conversationId, channel: conversation.channel });
 
       return { reply };
     } catch (e) {

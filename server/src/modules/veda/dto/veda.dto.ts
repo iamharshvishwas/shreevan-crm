@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsIn, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
-export const VEDA_STEP_KEYS = ['QUALIFY_LEAD', 'SEND_EMAIL', 'SEND_WHATSAPP', 'VOICE_CALL', 'CHAT_REPLY', 'NURTURE'] as const;
+export const VEDA_STEP_KEYS = ['QUALIFY_LEAD', 'SEND_EMAIL', 'SEND_WHATSAPP', 'VOICE_CALL', 'CHAT_REPLY', 'NURTURE', 'SELF_LEARN'] as const;
 export type VedaStepKey = (typeof VEDA_STEP_KEYS)[number];
 
 export interface VedaStepConfig {
@@ -67,6 +67,12 @@ export class UpdateVedaConfigDto {
   @ValidateNested()
   @Type(() => UpdateStepConfigDto)
   NURTURE?: UpdateStepConfigDto;
+
+  @ApiPropertyOptional({ type: UpdateStepConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpdateStepConfigDto)
+  SELF_LEARN?: UpdateStepConfigDto;
 }
 
 export class ReviewApprovalDto {

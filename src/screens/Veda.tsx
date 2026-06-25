@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import type { AppStore } from '../store';
-import { vedaApi, type VedaConfig, type VedaApproval, type VedaActionLog, type VedaSummary, type VedaAnalytics, type KnowledgeEntry } from '../api/veda';
+import { vedaApi, type VedaConfig, type VedaApproval, type VedaActionLog, type VedaSummary, type VedaAnalytics, type KnowledgeEntry, type KnowledgeGap } from '../api/veda';
 import { useAuth } from '../auth/useAuth';
 
 const STEP_LABELS: Record<string, { label: string; desc: string; phase: string }> = {
@@ -10,6 +10,7 @@ const STEP_LABELS: Record<string, { label: string; desc: string; phase: string }
   VOICE_CALL:    { label: 'AI Voice Calls',       desc: 'Outbound discovery calls via Vapi/Retell with Hindi+English',      phase: 'Phase 3' },
   CHAT_REPLY:    { label: 'Live Chat Replies',    desc: 'Veda chats in real time on the website widget & WhatsApp (auto-replies instantly)', phase: 'Live chat' },
   NURTURE:       { label: 'Nurture Sequences',    desc: 'Multi-touch follow-up (email + WhatsApp) for cold leads until they reply or convert', phase: 'Nurture' },
+  SELF_LEARN:    { label: 'Self-Learning',        desc: 'Veda spots questions it can’t answer, learns the answer, and grows its own knowledge (auto-applies safe entries, queues sensitive ones)', phase: 'Learning' },
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -99,19 +100,21 @@ export function Veda({ app }: { app: AppStore }) {
   const [summary, setSummary]       = useState<VedaSummary | null>(null);
   const [analytics, setAnalytics]   = useState<VedaAnalytics | null>(null);
   const [knowledge, setKnowledge]   = useState<KnowledgeEntry[]>([]);
+  const [gaps, setGaps]             = useState<KnowledgeGap[]>([]);
   const [loading, setLoading]       = useState(true);
   const [saving, setSaving]         = useState(false);
-  const [activeTab, setActiveTab]   = useState<'pending' | 'history' | 'analytics' | 'knowledge'>('pending');
+  const [activeTab, setActiveTab]   = useState<'pending' | 'history' | 'analytics' | 'knowledge' | 'learning'>('pending');
 
   const load = useCallback(async () => {
     try {
-      const [cfg, appr, lg, sum, an, kb] = await Promise.all([
+      const [cfg, appr, lg, sum, an, kb, gp] = await Promise.all([
         isAdmin ? vedaApi.getConfig() : Promise.resolve(null),
         vedaApi.listApprovals('PENDING'),
         vedaApi.getLogs(20),
         vedaApi.getSummary(),
         vedaApi.getAnalytics().catch(() => null),
         vedaApi.listKnowledge().catch(() => []),
+        vedaApi.listGaps().catch(() => []),
       ]);
       if (cfg) setConfig(cfg);
       setApprovals(appr.items);
@@ -119,6 +122,7 @@ export function Veda({ app }: { app: AppStore }) {
       setSummary(sum);
       setAnalytics(an);
       setKnowledge(kb);
+      setGaps(gp);
     } catch {
       // non-fatal — show whatever loaded
     } finally {
@@ -273,6 +277,26 @@ export function Veda({ app }: { app: AppStore }) {
       app.showToastMsg(`Shreevan knowledge loaded — ${r.created} new, ${r.updated} updated, ${r.skipped} unchanged${r.removed ? `, ${r.removed} pruned` : ''}`);
     } catch {
       app.showToastMsg('Failed to load Shreevan knowledge');
+    }
+  }
+
+  async function approveGap(id: string) {
+    try {
+      await vedaApi.approveGap(id);
+      const [gp, kb] = await Promise.all([vedaApi.listGaps().catch(() => gaps), vedaApi.listKnowledge().catch(() => knowledge)]);
+      setGaps(gp); setKnowledge(kb);
+      app.showToastMsg('Added to Veda’s knowledge ✓');
+    } catch {
+      app.showToastMsg('Failed to approve');
+    }
+  }
+
+  async function dismissGap(id: string) {
+    try {
+      await vedaApi.dismissGap(id);
+      setGaps(await vedaApi.listGaps().catch(() => gaps));
+    } catch {
+      app.showToastMsg('Failed to dismiss');
     }
   }
 
@@ -440,7 +464,7 @@ export function Veda({ app }: { app: AppStore }) {
       {/* Approvals + timeline tabs */}
       <Card>
         <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid var(--sw-sand-100)' }}>
-          {(['pending', 'history', 'analytics', 'knowledge'] as const).map((tab) => (
+          {(['pending', 'history', 'analytics', 'knowledge', 'learning'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -457,12 +481,16 @@ export function Veda({ app }: { app: AppStore }) {
                 ? `Pending approvals${approvals.length > 0 ? ` (${approvals.length})` : ''}`
                 : tab === 'history' ? 'Action history'
                 : tab === 'analytics' ? 'ROI & analytics'
-                : `Knowledge${knowledge.length ? ` (${knowledge.length})` : ''}`}
+                : tab === 'knowledge' ? `Knowledge${knowledge.length ? ` (${knowledge.length})` : ''}`
+                : `Learning${gaps.filter((g) => g.status === 'PENDING').length ? ` (${gaps.filter((g) => g.status === 'PENDING').length})` : ''}`}
             </button>
           ))}
         </div>
 
         {activeTab === 'analytics' && <AnalyticsPanel a={analytics} />}
+        {activeTab === 'learning' && (
+          <LearningPanel gaps={gaps} isAdmin={isAdmin} onApprove={approveGap} onDismiss={dismissGap} />
+        )}
         {activeTab === 'knowledge' && (
           <KnowledgePanel
             entries={knowledge}
@@ -655,6 +683,79 @@ const KB_TEMPLATES: { title: string; category: string; scaffold: string }[] = [
   { title: 'Food & dietary options', category: 'Logistics', scaffold: 'We serve sattvic vegetarian meals. We can accommodate: vegan, gluten-free, … . Please share dietary needs in advance.' },
   { title: 'Who our retreats are for', category: 'About', scaffold: 'Our retreats are ideal for … . Suitable for beginners? … . Age range: … .' },
 ];
+
+function LearningPanel({
+  gaps, isAdmin, onApprove, onDismiss,
+}: {
+  gaps: KnowledgeGap[];
+  isAdmin: boolean;
+  onApprove: (id: string) => void;
+  onDismiss: (id: string) => void;
+}) {
+  const pending = gaps.filter((g) => g.status === 'PENDING');
+  const open = gaps.filter((g) => g.status === 'OPEN').sort((a, b) => b.occurrences - a.occurrences);
+  const applied = gaps.filter((g) => g.status === 'APPLIED');
+
+  return (
+    <div>
+      <div style={{ fontSize: 12.5, color: 'var(--sw-ink-400)', marginBottom: 16, lineHeight: 1.5 }}>
+        Veda learns on its own: it spots questions it couldn’t answer, learns the answer when your team replies, and grows its knowledge — auto-applying safe entries and queueing pricing/health/policy ones here for your OK.
+      </div>
+
+      {/* Proposals awaiting approval */}
+      <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--sw-ink-900)', marginBottom: 10 }}>
+        Proposed knowledge {pending.length > 0 && <span style={{ color: '#d97706' }}>· {pending.length} need your OK</span>}
+      </div>
+      {pending.length === 0 ? (
+        <div style={{ fontSize: 13, color: 'var(--sw-ink-400)', padding: '8px 0 18px' }}>Nothing waiting — Veda auto-applies safe answers it learns.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 22 }}>
+          {pending.map((g) => (
+            <div key={g.id} style={{ border: '1px solid var(--sw-sand-200)', borderRadius: 10, padding: 14, background: '#fffdf7' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                <span style={{ fontSize: 10.5, fontWeight: 700, padding: '1px 8px', borderRadius: 999, background: '#fef3c7', color: '#92400e' }}>{g.draftCategory ?? 'FAQ'}</span>
+                <span style={{ fontSize: 10.5, color: 'var(--sw-ink-400)' }}>learned from “{g.question.slice(0, 60)}{g.question.length > 60 ? '…' : ''}”</span>
+              </div>
+              <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--sw-ink-900)', marginBottom: 3 }}>{g.draftTitle}</div>
+              <div style={{ fontSize: 12.5, color: 'var(--sw-ink-600)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{g.draftContent}</div>
+              {isAdmin && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <button onClick={() => onApprove(g.id)} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: 'var(--sw-forest-700)', color: '#fff', fontSize: 12.5, fontWeight: 600 }}>✓ Add to knowledge</button>
+                  <button onClick={() => onDismiss(g.id)} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid var(--sw-sand-200)', cursor: 'pointer', background: '#fff', color: 'var(--sw-ink-600)', fontSize: 12.5, fontWeight: 600 }}>Dismiss</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Unanswered questions Veda is waiting to learn */}
+      <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--sw-ink-900)', marginBottom: 10 }}>
+        Questions Veda couldn’t answer yet {open.length > 0 && <span style={{ color: 'var(--sw-ink-400)' }}>· {open.length}</span>}
+      </div>
+      {open.length === 0 ? (
+        <div style={{ fontSize: 13, color: 'var(--sw-ink-400)', padding: '8px 0 18px' }}>None — Veda is answering everything from its knowledge.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 22 }}>
+          {open.slice(0, 20).map((g) => (
+            <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--sw-ink-600)', padding: '6px 0', borderBottom: '1px solid var(--sw-sand-100)' }}>
+              {g.occurrences > 1 && <span style={{ fontSize: 10.5, fontWeight: 700, padding: '1px 7px', borderRadius: 999, background: '#e0e7ff', color: '#3730a3' }}>×{g.occurrences}</span>}
+              <span style={{ flex: 1 }}>{g.question}</span>
+              {isAdmin && <button onClick={() => onDismiss(g.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--sw-ink-400)', fontSize: 12 }}>✕</button>}
+            </div>
+          ))}
+          <div style={{ fontSize: 11.5, color: 'var(--sw-ink-400)', marginTop: 6 }}>Tip: reply to these in Live Chat — Veda captures your answer and turns it into knowledge automatically.</div>
+        </div>
+      )}
+
+      {applied.length > 0 && (
+        <div style={{ fontSize: 12, color: 'var(--sw-success, #15803d)', fontWeight: 600 }}>
+          ✦ Veda has self-learned {applied.length} knowledge {applied.length === 1 ? 'entry' : 'entries'} so far.
+        </div>
+      )}
+    </div>
+  );
+}
 
 function KnowledgePanel({
   entries, isAdmin, onAdd, onEdit, onToggle, onRemove, onImportPrograms, onSeedShreevan,

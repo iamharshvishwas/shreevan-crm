@@ -14,8 +14,24 @@ export interface VedaConfig {
     VOICE_CALL:    VedaStepConfig;
     CHAT_REPLY:    VedaStepConfig;
     NURTURE:       VedaStepConfig;
+    SELF_LEARN:    VedaStepConfig;
   };
 }
+
+export interface KnowledgeGap {
+  id: string;
+  question: string;
+  channel: string | null;
+  occurrences: number;
+  status: 'OPEN' | 'ANSWERED' | 'PENDING' | 'APPLIED' | 'DISMISSED';
+  capturedAnswer: string | null;
+  draftTitle: string | null;
+  draftContent: string | null;
+  draftCategory: string | null;
+  createdAt: string;
+}
+
+export interface LearningStats { open: number; answered: number; pending: number; applied: number; }
 
 export interface VedaAnalytics {
   funnel: { totalLeads: number; qualified: number; discoveryCalls: number; completedCalls: number; bookings: number };
@@ -112,4 +128,9 @@ export const vedaApi = {
   deleteKnowledge: (id: string) => api.delete<{ ok: true }>(`/veda/knowledge/${id}`),
   importPrograms:  () => api.post<{ created: number }>('/veda/knowledge/import-programs'),
   seedShreevan:    () => api.post<{ created: number; updated: number; skipped: number; removed: number }>('/veda/knowledge/seed-shreevan'),
+  // Self-learning
+  listGaps:        (status?: string) => api.get<KnowledgeGap[]>(`/veda/learning${status ? `?status=${status}` : ''}`),
+  learningStats:   () => api.get<LearningStats>('/veda/learning/stats'),
+  approveGap:      (id: string) => api.post<{ ok: boolean; knowledgeId?: string }>(`/veda/learning/${id}/approve`),
+  dismissGap:      (id: string) => api.post<{ ok: boolean }>(`/veda/learning/${id}/dismiss`),
 };
