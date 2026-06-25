@@ -264,6 +264,18 @@ export function Veda({ app }: { app: AppStore }) {
     }
   }
 
+  async function seedShreevan() {
+    try {
+      app.showToastMsg('Loading Shreevan knowledge… (embedding, give it a moment)');
+      const r = await vedaApi.seedShreevan();
+      const list = await vedaApi.listKnowledge().catch(() => knowledge);
+      setKnowledge(list);
+      app.showToastMsg(`Shreevan knowledge loaded — ${r.created} new, ${r.updated} updated, ${r.skipped} unchanged`);
+    } catch {
+      app.showToastMsg('Failed to load Shreevan knowledge');
+    }
+  }
+
   if (loading) {
     return (
       <div style={{ padding: 40, textAlign: 'center', color: 'var(--sw-ink-400)', fontSize: 14 }}>
@@ -460,6 +472,7 @@ export function Veda({ app }: { app: AppStore }) {
             onToggle={toggleKnowledge}
             onRemove={removeKnowledge}
             onImportPrograms={importPrograms}
+            onSeedShreevan={seedShreevan}
           />
         )}
 
@@ -644,7 +657,7 @@ const KB_TEMPLATES: { title: string; category: string; scaffold: string }[] = [
 ];
 
 function KnowledgePanel({
-  entries, isAdmin, onAdd, onEdit, onToggle, onRemove, onImportPrograms,
+  entries, isAdmin, onAdd, onEdit, onToggle, onRemove, onImportPrograms, onSeedShreevan,
 }: {
   entries: KnowledgeEntry[];
   isAdmin: boolean;
@@ -653,6 +666,7 @@ function KnowledgePanel({
   onToggle: (e: KnowledgeEntry) => void;
   onRemove: (id: string) => void;
   onImportPrograms: () => void;
+  onSeedShreevan: () => void;
 }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -696,6 +710,13 @@ function KnowledgePanel({
         <>
           {/* Quick start: import programs + topic templates */}
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+            <button
+              onClick={onSeedShreevan}
+              style={{ padding: '7px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', background: 'var(--sw-forest-900)', color: '#fff', fontSize: 12.5, fontWeight: 700 }}
+              title="Load the curated Shreevan Wellness knowledge pack (programs, pricing, policies, FAQs)"
+            >
+              ✦ Load Shreevan knowledge
+            </button>
             <button
               onClick={onImportPrograms}
               style={{ padding: '7px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', background: 'var(--sw-forest-700)', color: '#fff', fontSize: 12.5, fontWeight: 600 }}

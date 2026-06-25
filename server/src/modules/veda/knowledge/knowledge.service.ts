@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { OpenAiProvider } from '../ai/openai.provider';
+import { SHREEVAN_KNOWLEDGE_MD, parseKnowledgeMarkdown } from './shreevan-knowledge.seed';
 
 export interface KnowledgeInput {
   title: string;
@@ -43,6 +44,33 @@ export class KnowledgeService {
       created++;
     }
     return { created };
+  }
+
+  /**
+   * Load (or refresh) the curated Shreevan Wellness knowledge pack into the RAG
+   * store. Upserts by title: new blocks are created, edited blocks are
+   * re-embedded, untouched ones are skipped. Safe to run repeatedly.
+   */
+  async seedShreevan(): Promise<{ created: number; updated: number; skipped: number }> {
+    const entries = parseKnowledgeMarkdown(SHREEVAN_KNOWLEDGE_MD);
+    let created = 0, updated = 0, skipped = 0;
+    for (const e of entries) {
+      const existing = await this.prisma.vedaKnowledge.findFirst({ where: { title: e.title } });
+      if (!existing) {
+        await this.create({ title: e.title, content: e.content, category: e.category });
+        created++;
+        continue;
+      }
+      if (existing.content === e.content && existing.category === e.category) { skipped++; continue; }
+      const embedding = await this.embedFor({ title: e.title, content: e.content });
+      await this.prisma.vedaKnowledge.update({
+        where: { id: existing.id },
+        data: { content: e.content, category: e.category, active: true, ...(embedding.length ? { embedding } : {}) },
+      });
+      updated++;
+    }
+    this.logger.log(`Shreevan knowledge seed: ${created} created, ${updated} updated, ${skipped} unchanged.`);
+    return { created, updated, skipped };
   }
 
   async create(input: KnowledgeInput) {

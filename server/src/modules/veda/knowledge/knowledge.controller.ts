@@ -43,6 +43,12 @@ export class KnowledgeController {
     return this.knowledge.importPrograms();
   }
 
+  @Post('seed-shreevan')
+  @Roles('ADMIN')
+  seedShreevan() {
+    return this.knowledge.seedShreevan();
+  }
+
   @Patch(':id')
   @Roles('ADMIN')
   update(@Param('id') id: string, @Body() dto: UpdateKnowledgeDto) {
