@@ -72,6 +72,20 @@ export class UsersService {
     return updated;
   }
 
+  /** Admin sets a user's password (forgot-password recovery for a small team).
+   *  Clears any lockout and revokes the user's sessions so the old password is dead. */
+  async adminSetPassword(id: string, password: string, actorId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundError('User', id);
+    await this.prisma.user.update({
+      where: { id },
+      data: { passwordHash: await argon2.hash(password), failedLoginAttempts: 0, lockedUntil: null },
+    });
+    await this.prisma.refreshSession.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } });
+    await this.audit(actorId, 'USER_PASSWORD_RESET', id, {});
+    return { ok: true };
+  }
+
   /** True when no other active admin exists besides `excludeId`. */
   private async isLastAdmin(excludeId: string): Promise<boolean> {
     const others = await this.prisma.user.count({ where: { role: Role.ADMIN, isActive: true, id: { not: excludeId } } });

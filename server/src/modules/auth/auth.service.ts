@@ -11,6 +11,9 @@ import { TokensDto } from './dto/auth.dto';
 
 const sha256 = (v: string): string => createHash('sha256').update(v).digest('hex');
 
+const MAX_LOGIN_ATTEMPTS = 5;        // consecutive failures before lockout
+const LOCKOUT_MS = 15 * 60_000;      // 15-minute lockout
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -22,11 +25,35 @@ export class AuthService {
 
   async login(email: string, password: string, meta?: { ip?: string; userAgent?: string }): Promise<TokensDto> {
     const user = await this.users.findByEmail(email);
+
+    // Account lockout: after too many failures, refuse for a cooldown window.
+    if (user?.lockedUntil && user.lockedUntil > new Date()) {
+      const mins = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60_000);
+      throw new UnauthorizedException(`Too many failed attempts. Try again in ${mins} minute${mins === 1 ? '' : 's'}.`);
+    }
+
     // Verify even when the user is missing-ish to reduce timing signal.
     const ok = user ? await argon2.verify(user.passwordHash, password).catch(() => false) : false;
-    if (!user || !ok) throw new UnauthorizedException('Invalid email or password.');
+    if (!user || !ok) {
+      if (user) await this.registerFailedLogin(user.id, user.failedLoginAttempts);
+      throw new UnauthorizedException('Invalid email or password.');
+    }
     if (!user.isActive) throw new UnauthorizedException('This account is disabled.');
+
+    // Success → clear any failure counter / lockout.
+    if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+      await this.prisma.user.update({ where: { id: user.id }, data: { failedLoginAttempts: 0, lockedUntil: null } });
+    }
     return this.issueTokens({ sub: user.id, email: user.email, role: user.role }, meta);
+  }
+
+  /** Bump the failed-attempt counter; lock the account once it hits the cap. */
+  private async registerFailedLogin(userId: string, current: number): Promise<void> {
+    const attempts = current + 1;
+    const data = attempts >= MAX_LOGIN_ATTEMPTS
+      ? { failedLoginAttempts: 0, lockedUntil: new Date(Date.now() + LOCKOUT_MS) }
+      : { failedLoginAttempts: attempts };
+    await this.prisma.user.update({ where: { id: userId }, data });
   }
 
   async refresh(refreshToken: string, meta?: { ip?: string; userAgent?: string }): Promise<TokensDto> {

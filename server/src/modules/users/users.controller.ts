@@ -1,19 +1,21 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsBoolean, IsEmail, IsEnum, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsEnum, IsString } from 'class-validator';
 import { Role } from '@prisma/client';
 import { UsersService } from './users.service';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/auth.types';
+import { StrongPassword } from '../../common/validators/strong-password';
 
 class CreateUserDto {
   @IsEmail() email!: string;
   @IsString() name!: string;
   @IsEnum(Role) role!: Role;
-  @IsString() @MinLength(8) password!: string;
+  @StrongPassword() password!: string;
 }
 class UpdateRoleDto { @IsEnum(Role) role!: Role; }
 class SetActiveDto { @IsBoolean() isActive!: boolean; }
+class SetPasswordDto { @StrongPassword() password!: string; }
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -50,5 +52,13 @@ export class UsersController {
   @Roles(Role.ADMIN)
   setActive(@Param('id') id: string, @Body() dto: SetActiveDto, @CurrentUser() actor: AuthUser) {
     return this.users.setActive(id, dto.isActive, actor.id);
+  }
+
+  /** Admin resets a user's password (forgot-password for a small team). Revokes
+   *  the user's sessions; they sign in with the new password and can change it. */
+  @Patch(':id/password')
+  @Roles(Role.ADMIN)
+  setPassword(@Param('id') id: string, @Body() dto: SetPasswordDto, @CurrentUser() actor: AuthUser) {
+    return this.users.adminSetPassword(id, dto.password, actor.id);
   }
 }
