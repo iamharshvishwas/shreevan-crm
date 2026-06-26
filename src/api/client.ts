@@ -55,7 +55,32 @@ export class ApiError extends Error {
   }
 }
 
-async function refresh(): Promise<boolean> {
+/**
+ * Auth-expired listeners — fired once when the session can't be refreshed, so
+ * the app can drop to the login screen instead of looping forever on 401s.
+ */
+type AuthListener = () => void;
+let authExpiredListeners: AuthListener[] = [];
+export function onAuthExpired(fn: AuthListener): () => void {
+  authExpiredListeners.push(fn);
+  return () => { authExpiredListeners = authExpiredListeners.filter((l) => l !== fn); };
+}
+
+/**
+ * Single-flight refresh. Many requests can 401 at the same moment, but only ONE
+ * refresh call may run: refresh tokens rotate server-side, so parallel refreshes
+ * would invalidate each other (causing a 401 storm + random logout). Everyone
+ * awaits the same in-flight promise.
+ */
+let refreshInFlight: Promise<boolean> | null = null;
+function refresh(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = doRefresh().finally(() => { refreshInFlight = null; });
+  }
+  return refreshInFlight;
+}
+
+async function doRefresh(): Promise<boolean> {
   if (!refreshToken) return false;
   try {
     const res = await fetch(`${BASE}/auth/refresh`, {
@@ -87,8 +112,17 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
     throw new ApiError(0, { statusCode: 0, code: 'NETWORK', message: 'Could not reach the API. Is the backend running?' });
   }
 
-  if (res.status === 401 && retry && (await refresh())) {
-    return request<T>(method, path, body, false);
+  // 401 on a normal request → try a one-time refresh. Skip for /auth/* calls
+  // (login/refresh/logout manage their own errors). If refresh fails and we
+  // actually had a session, the session is dead: clear it and notify listeners
+  // so the app returns to the login screen instead of looping on 401s.
+  if (res.status === 401 && retry && !path.startsWith('/auth/')) {
+    const hadSession = !!refreshToken;
+    if (await refresh()) return request<T>(method, path, body, false);
+    if (hadSession) {
+      clearTokens();
+      authExpiredListeners.forEach((l) => l());
+    }
   }
 
   if (res.status === 204) return undefined as T;

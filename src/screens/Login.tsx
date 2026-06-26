@@ -87,6 +87,13 @@ export function Login({ auth }: { auth: AuthStore }) {
           Use your team account to access the CRM.
         </p>
 
+        {auth.sessionExpired && !error && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--sw-warning)', fontWeight: 600, marginBottom: 16, background: 'var(--sw-warning-bg)', border: '1px solid #e3d3a8', borderRadius: 8, padding: '10px 12px' }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--sw-warning)', flexShrink: 0 }} />
+            Your session expired — please sign in again.
+          </div>
+        )}
+
         <form onSubmit={submit}>
           <div style={{ marginBottom: 14 }}>
             <label htmlFor="email" style={labelStyle}>Email</label>

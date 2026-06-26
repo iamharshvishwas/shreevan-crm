@@ -9,14 +9,11 @@ Keep everything else intact (names, scheduling, program interest, general conver
 
 Respond ONLY with JSON: { "redacted": "<the redacted transcript>" }.`;
 
-// Lightweight fallback patterns if AI is unavailable. Intentionally broad —
-// better to over-redact than store health detail.
-const FALLBACK_TERMS = [
-  'diabet', 'cancer', 'tumor', 'tumour', 'depress', 'anxiety', 'asthma', 'thyroid',
-  'blood pressure', 'hypertension', 'arthritis', 'migraine', 'insomnia', 'pregnan',
-  'surgery', 'medication', 'medicine', 'diagnos', 'disorder', 'disease', 'injury',
-  'chronic', 'therapy', 'treatment', 'symptom', 'pain', 'allerg',
-];
+// Fail-closed placeholder. A keyword scrub can never be trusted to catch every
+// health detail (e.g. "trouble sleeping", "on beta blockers", "PTSD"), so when
+// AI redaction is unavailable we withhold the text entirely rather than risk
+// persisting medical information. The audio recording is still kept if needed.
+const WITHHELD = '[withheld — automatic health-safe redaction was unavailable]';
 
 @Injectable()
 export class RedactionService {
@@ -24,34 +21,34 @@ export class RedactionService {
 
   constructor(private readonly ai: OpenAiProvider) {}
 
-  /** Redact health/medical detail from free text before it is stored. */
-  async redact(text: string): Promise<{ text: string; method: 'ai' | 'fallback' | 'empty' }> {
+  /**
+   * Redact health/medical detail before storage. Fail-closed: if the AI
+   * redactor is not configured or errors, the text is withheld (never stored
+   * raw / under-redacted).
+   */
+  async redact(text: string): Promise<{ text: string; method: 'ai' | 'withheld' | 'empty' }> {
     if (!text?.trim()) return { text: '', method: 'empty' };
 
-    if (this.ai.isConfigured()) {
-      try {
-        const result = await this.ai.chat({
-          jsonMode: true,
-          temperature: 0,
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: text.slice(0, 12_000) },
-          ],
-        });
-        const parsed = this.ai.parseJson<{ redacted: string }>(result.message.content);
-        if (parsed.redacted) return { text: parsed.redacted, method: 'ai' };
-      } catch (e) {
-        this.logger.warn(`AI redaction failed, using fallback: ${(e as Error).message}`);
-      }
+    if (!this.ai.isConfigured()) {
+      this.logger.warn('Redaction withheld: AI not configured (fail-closed).');
+      return { text: WITHHELD, method: 'withheld' };
     }
-    return { text: this.fallbackRedact(text), method: 'fallback' };
-  }
 
-  /** Sentence-level scrub: drop any sentence containing a health term. */
-  private fallbackRedact(text: string): string {
-    return text
-      .split(/(?<=[.!?\n])\s+/)
-      .map((s) => (FALLBACK_TERMS.some((t) => s.toLowerCase().includes(t)) ? '[health detail redacted]' : s))
-      .join(' ');
+    try {
+      const result = await this.ai.chat({
+        jsonMode: true,
+        temperature: 0,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: text.slice(0, 12_000) },
+        ],
+      });
+      const parsed = this.ai.parseJson<{ redacted: string }>(result.message.content);
+      if (parsed.redacted) return { text: parsed.redacted, method: 'ai' };
+      this.logger.warn('Redaction withheld: AI returned no redacted text (fail-closed).');
+    } catch (e) {
+      this.logger.warn(`Redaction withheld: AI redaction failed (fail-closed): ${(e as Error).message}`);
+    }
+    return { text: WITHHELD, method: 'withheld' };
   }
 }
