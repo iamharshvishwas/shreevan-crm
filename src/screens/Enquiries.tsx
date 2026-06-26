@@ -59,7 +59,7 @@ export function Enquiries({ app }: { app: AppStore }) {
   // Keep the tab badge counts live (they used to update only on mount/action).
   useEffect(() => {
     const tick = () => { if (document.visibilityState === 'visible') refreshCounts(); };
-    const t = window.setInterval(tick, 15_000);
+    const t = window.setInterval(tick, 30_000);
     window.addEventListener('focus', tick);
     return () => { window.clearInterval(t); window.removeEventListener('focus', tick); };
   }, [refreshCounts]);

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type DependencyList } from 'react';
 
-const DEFAULT_INTERVAL = 15_000;
+const DEFAULT_INTERVAL = 30_000;
 
 /**
  * Data hook with built-in live refresh:
- *  - silent background polling (default every 15s)
+ *  - silent background polling (default every 30s; tune per-resource)
  *  - a refetch whenever the browser tab regains focus / becomes visible
  *
  * The `loading` flag only flips on the first load and on manual reload(), so

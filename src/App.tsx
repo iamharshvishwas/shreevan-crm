@@ -19,6 +19,7 @@ import { LiveChat } from './screens/LiveChat';
 import { Login } from './screens/Login';
 import { useAppStore } from './store';
 import { useAuth, type AuthStore } from './auth/useAuth';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export function App() {
   const auth = useAuth();
@@ -80,7 +81,9 @@ function AuthedApp({ auth }: { auth: AuthStore }) {
         <Topbar app={app} />
         <main style={{ flex: 1, overflowY: fillHeight ? 'hidden' : 'auto', minWidth: 0 }}>
           <div className="sw-screen" key={app.selectedLeadId ?? app.screen}>
-            {renderScreen()}
+            <ErrorBoundary variant="screen" resetKey={app.selectedLeadId ?? app.screen}>
+              {renderScreen()}
+            </ErrorBoundary>
           </div>
         </main>
       </div>

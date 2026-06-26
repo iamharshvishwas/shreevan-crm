@@ -101,10 +101,10 @@
         '<button class="x" aria-label="Close">×</button></div>' +
       '<form class="gate" novalidate>' +
         '<div class="gt">Namaste 🌿</div>' +
-        '<div class="gs">A few quick details so Veda can help you and our team can follow up on your retreat.</div>' +
+        '<div class="gs">Your name and one way to reach you — so Veda can help and our team can follow up.</div>' +
         '<div class="fld"><label>Your name</label><input class="gname" type="text" autocomplete="name" placeholder="e.g. Priya Sharma"/></div>' +
-        '<div class="fld"><label>Email</label><input class="gemail" type="email" autocomplete="email" placeholder="you@example.com"/></div>' +
-        '<div class="fld"><label>WhatsApp number</label><input class="gphone" type="tel" autocomplete="tel" placeholder="+91 98xxxxxxxx"/></div>' +
+        '<div class="fld"><label>Email <span style="color:#9aa39d;font-weight:400">(or WhatsApp below)</span></label><input class="gemail" type="email" autocomplete="email" placeholder="you@example.com"/></div>' +
+        '<div class="fld"><label>WhatsApp number <span style="color:#9aa39d;font-weight:400">(or email above)</span></label><input class="gphone" type="tel" autocomplete="tel" placeholder="+91 98xxxxxxxx"/></div>' +
         '<div class="gerr"></div>' +
         '<button type="submit" class="gbtn">Start chat with Veda</button>' +
         '<div class="gp">Your details are kept private and used only to assist you.</div>' +
@@ -152,9 +152,13 @@
     var name = (gName.value || '').trim();
     var email = (gEmail.value || '').trim();
     var phone = (gPhone.value || '').trim();
+    var emailOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+    var phoneOk = phone.replace(/[^\d]/g, '').length >= 8;
+    // Name + at least one way to reach them (email OR WhatsApp). Lower friction.
     if (name.length < 2) { gErr.textContent = 'Please enter your name.'; gName.focus(); return; }
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { gErr.textContent = 'Please enter a valid email.'; gEmail.focus(); return; }
-    if (phone.replace(/[^\d]/g, '').length < 8) { gErr.textContent = 'Please enter your WhatsApp number with country code.'; gPhone.focus(); return; }
+    if (!email && !phone) { gErr.textContent = 'Please add your email or WhatsApp number.'; gEmail.focus(); return; }
+    if (email && !emailOk) { gErr.textContent = 'That email looks off — please check it.'; gEmail.focus(); return; }
+    if (phone && !phoneOk) { gErr.textContent = 'Please enter your WhatsApp number with country code.'; gPhone.focus(); return; }
     gErr.textContent = '';
     profile = { name: name, email: email, phone: phone };
     try { localStorage.setItem('veda_chat_profile', JSON.stringify(profile)); } catch (e2) {}

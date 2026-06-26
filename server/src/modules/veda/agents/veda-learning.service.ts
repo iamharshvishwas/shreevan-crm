@@ -49,12 +49,20 @@ export class VedaLearningService {
 
       const normalized = normalize(q);
       if (!normalized) return;
-      const existing = await this.prisma.vedaKnowledgeGap.findFirst({
-        where: { normalized, status: { in: [VedaGapStatus.OPEN, VedaGapStatus.ANSWERED, VedaGapStatus.PENDING] } },
+
+      // De-dupe: exact normalized match first (fast path), then fuzzy token
+      // overlap so near-identical phrasings ("is parking available" vs "do you
+      // have parking") fold into one gap instead of creating noise.
+      const active = await this.prisma.vedaKnowledgeGap.findMany({
+        where: { status: { in: [VedaGapStatus.OPEN, VedaGapStatus.ANSWERED, VedaGapStatus.PENDING] } },
         orderBy: { createdAt: 'desc' },
+        take: 100,
       });
-      if (existing) {
-        await this.prisma.vedaKnowledgeGap.update({ where: { id: existing.id }, data: { occurrences: { increment: 1 } } });
+      const qTokens = contentTokens(q);
+      const dup = active.find((g) => g.normalized === normalized)
+        ?? active.find((g) => jaccard(qTokens, contentTokens(g.question)) >= 0.5);
+      if (dup) {
+        await this.prisma.vedaKnowledgeGap.update({ where: { id: dup.id }, data: { occurrences: { increment: 1 } } });
         return;
       }
       await this.prisma.vedaKnowledgeGap.create({
@@ -182,4 +190,25 @@ export class VedaLearningService {
 /** Lowercase, strip punctuation, collapse whitespace — for gap de-duplication. */
 function normalize(s: string): string {
   return s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+}
+
+/** Common words that carry no topic meaning — dropped before fuzzy matching. */
+const STOPWORDS = new Set([
+  'the', 'a', 'an', 'is', 'are', 'do', 'does', 'did', 'you', 'your', 'we', 'can', 'could',
+  'would', 'will', 'to', 'of', 'for', 'and', 'or', 'in', 'on', 'at', 'it', 'this', 'that',
+  'with', 'have', 'has', 'any', 'my', 'me', 'please', 'there', 'what', 'whats', 'how', 'when',
+  'where', 'which', 'also', 'about', 'tell', 'know', 'need', 'want', 'get', 'give',
+]);
+
+/** Content-word token set (stopwords + short words removed) for similarity. */
+function contentTokens(s: string): Set<string> {
+  return new Set(normalize(s).split(' ').filter((t) => t.length > 2 && !STOPWORDS.has(t)));
+}
+
+/** Jaccard similarity of two token sets (0..1). */
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (!a.size || !b.size) return 0;
+  let inter = 0;
+  for (const t of a) if (b.has(t)) inter++;
+  return inter / (a.size + b.size - inter);
 }
