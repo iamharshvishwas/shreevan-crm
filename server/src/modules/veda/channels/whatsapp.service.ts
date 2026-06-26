@@ -212,12 +212,14 @@ export class WhatsAppService {
   }
 
   private async fetchLeadFields(leadgenId: string): Promise<Record<string, string>> {
+    const usingPageToken = !!this.config.get<string>('META_PAGE_TOKEN');
     const token = this.config.get<string>('META_PAGE_TOKEN') ?? this.config.get<string>('WHATSAPP_TOKEN');
     const v = this.config.get<string>('META_GRAPH_VERSION') ?? 'v21.0';
-    if (!token) return {};
-    const res = await fetch(`https://graph.facebook.com/${v}/${leadgenId}?access_token=${token}`);
+    if (!token) { this.logger.error('Leadgen fetch skipped: no META_PAGE_TOKEN/WHATSAPP_TOKEN set'); return {}; }
+    const res = await fetch(`https://graph.facebook.com/${v}/${leadgenId}?fields=field_data&access_token=${token}`);
     if (!res.ok) {
-      this.logger.error(`Leadgen fetch ${res.status} for ${leadgenId}`);
+      const body = await res.text().catch(() => '');
+      this.logger.error(`Leadgen fetch ${res.status} for ${leadgenId} (token=${usingPageToken ? 'META_PAGE_TOKEN' : 'WHATSAPP_TOKEN'}): ${body.slice(0, 300)}`);
       return {};
     }
     const data = (await res.json()) as { field_data?: Array<{ name: string; values: string[] }> };
