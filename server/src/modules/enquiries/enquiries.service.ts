@@ -6,17 +6,30 @@ import { PrismaService } from '../../database/prisma.service';
 import { Paginated, paginate } from '../../common/dto/pagination.dto';
 import { ConflictError, NotFoundError } from '../../common/errors/domain.errors';
 import { IngestionService } from './ingestion.service';
+import { EmailProvider } from '../veda/ai/email.provider';
+import { WhatsAppProvider } from '../veda/channels/whatsapp.provider';
 import { computeSla } from './sla.util';
 import {
   AddNoteDto, ListEnquiriesDto, ManualEnquiryDto, ResponseDto, WebsiteEnquiryDto,
 } from './dto/enquiries.dto';
 import { normalizeEmail, normalizePhone } from '../contacts/identity.util';
 
+const CHANNEL_LABEL_PLAIN: Partial<Record<Channel, string>> = {
+  [Channel.WHATSAPP]: 'WhatsApp',
+  [Channel.EMAIL]: 'Email',
+  [Channel.INSTAGRAM]: 'Instagram',
+  [Channel.FACEBOOK]: 'Facebook',
+  [Channel.WEBSITE_FORM]: 'Website form',
+  [Channel.PHONE]: 'Phone',
+};
+
 @Injectable()
 export class EnquiriesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ingestion: IngestionService,
+    private readonly email: EmailProvider,
+    private readonly wa: WhatsAppProvider,
   ) {}
 
   async list(dto: ListEnquiriesDto): Promise<Paginated<unknown>> {
@@ -133,17 +146,42 @@ export class EnquiriesService {
   async respond(id: string, dto: ResponseDto, actor: { id: string; email: string }) {
     const enquiry = await this.prisma.enquiry.findUnique({
       where: { id },
-      include: { conversations: { orderBy: { updatedAt: 'desc' }, take: 1 } },
-
+      include: {
+        conversations: { orderBy: { updatedAt: 'desc' }, take: 1 },
+        contact: { include: { identities: true } },
+      },
     });
     if (!enquiry) throw new NotFoundError('Enquiry', id);
     const conversation = enquiry.conversations[0];
     if (!conversation) throw new ConflictError('NO_CONVERSATION', 'This enquiry has no conversation to reply to.');
 
-    const connection = conversation.connectionId
-      ? await this.prisma.channelConnection.findUnique({ where: { id: conversation.connectionId } })
-      : null;
-    const delivery = connection?.outboundEnabled ? DeliveryState.SENT : DeliveryState.LOGGED;
+    // Actually deliver on connected channels (WhatsApp / Email); otherwise the
+    // reply is recorded as an internal log. Sending never throws to the caller —
+    // a failure is captured and the message is still logged.
+    let delivery: DeliveryState = DeliveryState.LOGGED;
+    let detail = `Recorded as an internal log — ${CHANNEL_LABEL_PLAIN[enquiry.channel] ?? enquiry.channel} has no connected outbound.`;
+    try {
+      if (enquiry.channel === Channel.WHATSAPP && this.wa.isLive()) {
+        const phone = enquiry.contact?.identities.find((i) => i.channel === Channel.WHATSAPP)?.handle;
+        if (!phone) { detail = 'No WhatsApp number on file — recorded as a log.'; }
+        else {
+          const r = await this.wa.sendText(phone, dto.body);
+          delivery = r.delivered ? DeliveryState.SENT : DeliveryState.LOGGED;
+          detail = r.delivered ? 'Sent on WhatsApp.' : r.detail;
+        }
+      } else if (enquiry.channel === Channel.EMAIL && this.email.isLive()) {
+        const to = enquiry.contact?.identities.find((i) => i.channel === Channel.EMAIL)?.handle;
+        if (!to) { detail = 'No email address on file — recorded as a log.'; }
+        else {
+          const r = await this.email.send({ to, subject: 'Re: your enquiry with Shreevan Wellness', body: dto.body });
+          delivery = r.delivered ? DeliveryState.SENT : DeliveryState.LOGGED;
+          detail = r.delivered ? 'Sent by email.' : r.detail;
+        }
+      }
+    } catch (e) {
+      delivery = DeliveryState.LOGGED;
+      detail = `Could not send (${(e as Error).message}) — recorded as a log.`;
+    }
 
     await this.prisma.$transaction([
       this.prisma.message.create({
@@ -162,7 +200,7 @@ export class EnquiriesService {
         data: { firstRespondedAt: enquiry.firstRespondedAt ?? new Date(), status: EnquiryStatus.WAITING_FOR_CUSTOMER, lastMessageAt: new Date() },
       }),
     ]);
-    return { delivery, detail: delivery === DeliveryState.SENT ? 'Sent.' : 'Recorded as a manual log — outbound channel not connected.' };
+    return { delivery, detail };
   }
 
   /** Manual phone/walk-in enquiry — runs through the same ingestion pipeline. */

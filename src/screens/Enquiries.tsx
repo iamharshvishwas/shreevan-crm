@@ -56,8 +56,16 @@ export function Enquiries({ app }: { app: AppStore }) {
 
   const refreshAll = useCallback(() => { void list.reload(); void detail.reload(); refreshCounts(); }, [list, detail, refreshCounts]);
 
-  async function act(fn: () => Promise<unknown>, ok: string) {
-    try { await fn(); app.showToastMsg(ok); refreshAll(); }
+  // Keep the tab badge counts live (they used to update only on mount/action).
+  useEffect(() => {
+    const tick = () => { if (document.visibilityState === 'visible') refreshCounts(); };
+    const t = window.setInterval(tick, 15_000);
+    window.addEventListener('focus', tick);
+    return () => { window.clearInterval(t); window.removeEventListener('focus', tick); };
+  }, [refreshCounts]);
+
+  async function act(fn: () => Promise<unknown>, ok: string | ((r: unknown) => string)) {
+    try { const r = await fn(); app.showToastMsg(typeof ok === 'function' ? ok(r) : ok); refreshAll(); }
     catch (e) { app.showToastMsg(e instanceof Error ? e.message : 'Action failed.'); }
   }
 
@@ -220,7 +228,7 @@ function ActiveConversation({
   app: AppStore;
   detail: ReturnType<typeof useEnquiry>;
   users: ReturnType<typeof useUsers>;
-  act: (fn: () => Promise<unknown>, ok: string) => Promise<void>;
+  act: (fn: () => Promise<unknown>, ok: string | ((r: unknown) => string)) => Promise<void>;
   onConvert: () => void;
   onBack: () => void;
 }) {
@@ -328,13 +336,20 @@ function ActiveConversation({
 
       {/* composer */}
       <div style={{ borderTop: '1px solid var(--sw-line-soft)', background: '#ffffff', padding: '12px 16px', flexShrink: 0 }}>
-        <div style={{ fontSize: 11.5, color: 'var(--sw-warning)', fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--sw-warning)' }} />
-          {CHANNEL_LABEL[e.channel]} outbound isn't connected — responses are recorded as a manual log.
-        </div>
+        {(() => {
+          const canSend = e.channel === 'WHATSAPP' || e.channel === 'EMAIL';
+          return (
+            <div style={{ fontSize: 11.5, color: canSend ? 'var(--sw-forest-700)' : 'var(--sw-warning)', fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: canSend ? 'var(--sw-success, #15803d)' : 'var(--sw-warning)' }} />
+              {canSend
+                ? `Replies are delivered to the customer on ${CHANNEL_LABEL[e.channel]} (logged instead if the channel isn't connected).`
+                : `${CHANNEL_LABEL[e.channel]} has no outbound — replies are recorded as an internal log.`}
+            </div>
+          );
+        })()}
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
           <textarea value={reply} onChange={(ev) => setReply(ev.target.value)} rows={2} placeholder="Write a response…" style={{ flex: 1, border: '1px solid var(--sw-line-soft)', borderRadius: 8, padding: '10px 12px', fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--sw-ink-900)', resize: 'vertical' }} />
-          <button onClick={() => { if (reply.trim()) { void act(() => enquiriesApi.respond(e.id, reply.trim()), 'Response recorded.'); setReply(''); } else { app.showToastMsg('Write a response first.'); } }} className="hov-forest-deep" style={{ height: 40, padding: '0 18px', borderRadius: 999, border: '1px solid var(--sw-forest-900)', background: 'var(--sw-forest-900)', color: '#fff', fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>Log response</button>
+          <button onClick={() => { if (reply.trim()) { void act(() => enquiriesApi.respond(e.id, reply.trim()), (r) => (r as { detail?: string })?.detail ?? 'Response recorded.'); setReply(''); } else { app.showToastMsg('Write a response first.'); } }} className="hov-forest-deep" style={{ height: 40, padding: '0 18px', borderRadius: 999, border: '1px solid var(--sw-forest-900)', background: 'var(--sw-forest-900)', color: '#fff', fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>{e.channel === 'WHATSAPP' || e.channel === 'EMAIL' ? 'Send reply' : 'Log response'}</button>
         </div>
       </div>
     </div>
