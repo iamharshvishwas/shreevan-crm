@@ -33,4 +33,30 @@ export class TokensDto {
   @ApiProperty() accessToken!: string;
   @ApiProperty() refreshToken!: string;
   @ApiProperty() expiresIn!: number;
+  /** True for an admin who has not yet enrolled in 2FA (frontend forces setup). */
+  @ApiProperty({ required: false }) setup2faRequired?: boolean;
+}
+
+/** Returned by /auth/login when the account has 2FA on — exchange via /auth/2fa/verify. */
+export class TwoFactorChallengeDto {
+  @ApiProperty({ example: true }) twoFactorRequired!: true;
+  @ApiProperty() challengeToken!: string;
+}
+
+export type LoginResult = TokensDto | TwoFactorChallengeDto;
+
+export class TwoFactorVerifyDto {
+  @ApiProperty()
+  @IsString()
+  challengeToken!: string;
+
+  @ApiProperty({ example: '123456' })
+  @IsString()
+  code!: string;
+}
+
+export class TwoFactorCodeDto {
+  @ApiProperty({ example: '123456' })
+  @IsString()
+  code!: string;
 }

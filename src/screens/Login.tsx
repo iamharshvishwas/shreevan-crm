@@ -27,22 +27,53 @@ export function Login({ auth }: { auth: AuthStore }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // 2FA second step: once the password is accepted we hold the challenge token
+  // and collect the authenticator code.
+  const [challengeToken, setChallengeToken] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+
+  function toApiError(err: unknown): string {
+    if (err instanceof ApiError) {
+      return err.status === 0 ? 'Could not reach the API. Make sure the backend is running on port 3000.' : err.message;
+    }
+    return 'Something went wrong. Please try again.';
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setBusy(true);
     try {
-      await auth.login(email.trim(), password);
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.status === 0 ? 'Could not reach the API. Make sure the backend is running on port 3000.' : err.message);
-      } else {
-        setError('Something went wrong. Please try again.');
+      const outcome = await auth.login(email.trim(), password);
+      if (outcome.status === '2fa') {
+        setChallengeToken(outcome.challengeToken);
+        setCode('');
       }
+    } catch (err) {
+      setError(toApiError(err));
     } finally {
       setBusy(false);
     }
+  }
+
+  async function submitCode(e: FormEvent) {
+    e.preventDefault();
+    if (!challengeToken) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await auth.verify2fa(challengeToken, code.replace(/\s/g, ''));
+    } catch (err) {
+      setError(toApiError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function backToPassword() {
+    setChallengeToken(null);
+    setCode('');
+    setError(null);
   }
 
   return (
@@ -81,62 +112,122 @@ export function Login({ auth }: { auth: AuthStore }) {
         </div>
 
         <h1 style={{ margin: '0 0 4px 0', fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 22, color: 'var(--sw-ink-900)' }}>
-          Sign in
+          {challengeToken ? 'Enter your code' : 'Sign in'}
         </h1>
         <p style={{ margin: '0 0 20px 0', fontSize: 13, color: 'var(--sw-stone-600)' }}>
-          Use your team account to access the CRM.
+          {challengeToken
+            ? 'Open your authenticator app and enter the 6-digit code (or a backup code).'
+            : 'Use your team account to access the CRM.'}
         </p>
 
-        {auth.sessionExpired && !error && (
+        {!challengeToken && auth.sessionExpired && !error && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--sw-warning)', fontWeight: 600, marginBottom: 16, background: 'var(--sw-warning-bg)', border: '1px solid #e3d3a8', borderRadius: 8, padding: '10px 12px' }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--sw-warning)', flexShrink: 0 }} />
             Your session expired — please sign in again.
           </div>
         )}
 
-        <form onSubmit={submit}>
-          <div style={{ marginBottom: 14 }}>
-            <label htmlFor="email" style={labelStyle}>Email</label>
-            <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={inputStyle} autoComplete="username" />
-          </div>
-          <div style={{ marginBottom: 6 }}>
-            <label htmlFor="password" style={labelStyle}>Password</label>
-            <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" style={inputStyle} autoComplete="current-password" />
-          </div>
-
-          {error && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--sw-error)', fontWeight: 600, marginTop: 12 }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--sw-error)', flexShrink: 0 }} />
-              {error}
+        {!challengeToken ? (
+          <form onSubmit={submit}>
+            <div style={{ marginBottom: 14 }}>
+              <label htmlFor="email" style={labelStyle}>Email</label>
+              <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={inputStyle} autoComplete="username" />
             </div>
-          )}
+            <div style={{ marginBottom: 6 }}>
+              <label htmlFor="password" style={labelStyle}>Password</label>
+              <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" style={inputStyle} autoComplete="current-password" />
+            </div>
 
-          <button
-            type="submit"
-            disabled={busy}
-            className="hov-forest-deep"
-            style={{
-              width: '100%',
-              height: 44,
-              marginTop: 20,
-              borderRadius: 999,
-              border: '1px solid var(--sw-forest-900)',
-              background: 'var(--sw-forest-900)',
-              color: '#ffffff',
-              fontFamily: 'var(--font-body)',
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: busy ? 'not-allowed' : 'pointer',
-              opacity: busy ? 0.7 : 1,
-            }}
-          >
-            {busy ? 'Signing in…' : 'Sign in'}
-          </button>
-        </form>
+            {error && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--sw-error)', fontWeight: 600, marginTop: 12 }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--sw-error)', flexShrink: 0 }} />
+                {error}
+              </div>
+            )}
 
-        <p style={{ margin: '18px 0 0 0', fontSize: 11.5, color: 'var(--sw-stone-600)', textAlign: 'center', lineHeight: 1.5 }}>
-          Dev: isha@shreevanwellness.com / changeme123
-        </p>
+            <button
+              type="submit"
+              disabled={busy}
+              className="hov-forest-deep"
+              style={{
+                width: '100%',
+                height: 44,
+                marginTop: 20,
+                borderRadius: 999,
+                border: '1px solid var(--sw-forest-900)',
+                background: 'var(--sw-forest-900)',
+                color: '#ffffff',
+                fontFamily: 'var(--font-body)',
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: busy ? 'not-allowed' : 'pointer',
+                opacity: busy ? 0.7 : 1,
+              }}
+            >
+              {busy ? 'Signing in…' : 'Sign in'}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={submitCode}>
+            <div style={{ marginBottom: 6 }}>
+              <label htmlFor="code" style={labelStyle}>Authentication code</label>
+              <input
+                id="code"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                autoFocus
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="123456"
+                style={{ ...inputStyle, letterSpacing: '0.3em', textAlign: 'center', fontSize: 18 }}
+              />
+            </div>
+
+            {error && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--sw-error)', fontWeight: 600, marginTop: 12 }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--sw-error)', flexShrink: 0 }} />
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={busy || code.replace(/\s/g, '').length < 6}
+              className="hov-forest-deep"
+              style={{
+                width: '100%',
+                height: 44,
+                marginTop: 20,
+                borderRadius: 999,
+                border: '1px solid var(--sw-forest-900)',
+                background: 'var(--sw-forest-900)',
+                color: '#ffffff',
+                fontFamily: 'var(--font-body)',
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: busy ? 'not-allowed' : 'pointer',
+                opacity: busy || code.replace(/\s/g, '').length < 6 ? 0.7 : 1,
+              }}
+            >
+              {busy ? 'Verifying…' : 'Verify & sign in'}
+            </button>
+
+            <button
+              type="button"
+              onClick={backToPassword}
+              style={{ width: '100%', marginTop: 12, background: 'none', border: 'none', color: 'var(--sw-stone-600)', fontFamily: 'var(--font-body)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}
+            >
+              ← Back to sign in
+            </button>
+          </form>
+        )}
+
+        {!challengeToken && (
+          <p style={{ margin: '18px 0 0 0', fontSize: 11.5, color: 'var(--sw-stone-600)', textAlign: 'center', lineHeight: 1.5 }}>
+            Dev: isha@shreevanwellness.com / changeme123
+          </p>
+        )}
       </div>
     </div>
   );

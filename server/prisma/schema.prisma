@@ -187,6 +187,10 @@ model User {
   isActive     Boolean  @default(true)
   failedLoginAttempts Int      @default(0)
   lockedUntil         DateTime?
+  twoFactorEnabled       Boolean  @default(false)
+  twoFactorSecret        String?  // AES-GCM encrypted TOTP secret (active)
+  twoFactorPendingSecret String?  // encrypted TOTP secret during setup, pre-verify
+  twoFactorBackupCodes   String[] // sha256-hashed one-time recovery codes
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

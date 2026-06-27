@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AppStore } from '../store';
 import { ApiError } from '../api/client';
-import { changePassword } from '../api/auth';
+import {
+  changePassword, get2faStatus, setup2fa, enable2fa, disable2fa,
+  type TwoFactorSetup,
+} from '../api/auth';
 import { Callout } from '../components/ui';
 import { CHANNEL_LABEL } from '../api/enquiries';
 import {
@@ -43,6 +46,8 @@ export function Settings({ app }: { app: AppStore }) {
         {admin ? <AdminTeam app={app} /> : <ReadonlyTeam />}
 
         <PasswordCard app={app} />
+
+        <TwoFactorCard app={app} />
 
         {/* Notifications (preferences — local) */}
         <section style={cardStyle}>
@@ -203,6 +208,175 @@ function PasswordCard({ app }: { app: AppStore }) {
           </button>
         </div>
       </div>
+    </section>
+  );
+}
+
+/* ---------------- Your account: two-factor authentication ---------------- */
+
+type TwoFactorMode = 'idle' | 'enrolling' | 'backup' | 'disabling';
+
+function TwoFactorCard({ app }: { app: AppStore }) {
+  const [enabled, setEnabled] = useState<boolean | null>(null); // null = loading
+  const [mode, setMode] = useState<TwoFactorMode>('idle');
+  const [setupData, setSetupData] = useState<TwoFactorSetup | null>(null);
+  const [code, setCode] = useState('');
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    get2faStatus()
+      .then((s) => { if (live) setEnabled(s.enabled); })
+      .catch(() => { if (live) setEnabled(false); });
+    return () => { live = false; };
+  }, []);
+
+  function reset() {
+    setMode('idle'); setSetupData(null); setCode(''); setBusy(false);
+  }
+
+  async function beginEnrol() {
+    setBusy(true);
+    try {
+      const data = await setup2fa();
+      setSetupData(data);
+      setCode('');
+      setMode('enrolling');
+    } catch (e) {
+      app.showToastMsg(e instanceof ApiError ? e.message : '2FA setup shuru nahi ho paya.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmEnable() {
+    const clean = code.replace(/\s/g, '');
+    if (clean.length < 6) { app.showToastMsg('6-digit code daalo.'); return; }
+    setBusy(true);
+    try {
+      const { backupCodes: codes } = await enable2fa(clean);
+      setBackupCodes(codes);
+      setEnabled(true);
+      setMode('backup');
+      setCode('');
+    } catch (e) {
+      app.showToastMsg(e instanceof ApiError ? e.message : 'Code galat hai — dobara try karo.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmDisable() {
+    const clean = code.replace(/\s/g, '');
+    if (clean.length < 6) { app.showToastMsg('Confirm karne ke liye code daalo.'); return; }
+    setBusy(true);
+    try {
+      await disable2fa(clean);
+      setEnabled(false);
+      app.showToastMsg('Two-factor authentication band kar di gayi.');
+      reset();
+    } catch (e) {
+      app.showToastMsg(e instanceof ApiError ? e.message : 'Code galat hai — 2FA off nahi hui.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const codeInput = (onEnter: () => void) => (
+    <input type="text" inputMode="numeric" autoComplete="one-time-code" value={code} placeholder="123456"
+      onChange={(e) => setCode(e.target.value)}
+      onKeyDown={(e) => { if (e.key === 'Enter') onEnter(); }}
+      style={{ ...inputStyle, letterSpacing: '0.25em', textAlign: 'center' }} />
+  );
+
+  const primaryBtn = (label: string, onClick: () => void, disabled = false) => (
+    <button onClick={onClick} disabled={busy || disabled} className="hov-forest-deep"
+      style={{ height: 36, padding: '0 18px', borderRadius: 999, border: '1px solid var(--sw-forest-900)', background: 'var(--sw-forest-900)', color: '#fff', fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 600, cursor: busy || disabled ? 'default' : 'pointer', opacity: busy || disabled ? 0.6 : 1 }}>
+      {busy ? 'Working…' : label}
+    </button>
+  );
+
+  const ghostBtn = (label: string, onClick: () => void) => (
+    <button onClick={onClick} disabled={busy}
+      style={{ height: 36, padding: '0 14px', borderRadius: 999, border: '1px solid var(--sw-line-soft)', background: '#fff', color: 'var(--sw-ink-900)', fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 600, cursor: busy ? 'default' : 'pointer' }}>
+      {label}
+    </button>
+  );
+
+  return (
+    <section style={cardStyle}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+        <h2 style={{ ...h2Style, marginBottom: 0 }}>Two-factor authentication</h2>
+        {enabled !== null && (
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: enabled ? 'var(--sw-moss-600)' : 'var(--sw-stone-600)', background: enabled ? 'rgba(74,124,89,0.12)' : 'var(--sw-line-soft)', borderRadius: 999, padding: '3px 10px' }}>
+            {enabled ? 'On' : 'Off'}
+          </span>
+        )}
+      </div>
+      <p style={{ margin: '0 0 14px 0', fontSize: 12.5, color: 'var(--sw-stone-600)' }}>
+        Login par authenticator app ka 6-digit code maanga jayega — account ki extra suraksha.
+      </p>
+
+      {enabled === null && <p style={{ fontSize: 12.5, color: 'var(--sw-stone-600)' }}>Loading…</p>}
+
+      {/* Idle: show enable or disable entry point */}
+      {enabled !== null && mode === 'idle' && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          {enabled
+            ? ghostBtn('Turn off', () => { setCode(''); setMode('disabling'); })
+            : primaryBtn('Enable 2FA', () => void beginEnrol())}
+        </div>
+      )}
+
+      {/* Enrolling: QR + manual key + first code */}
+      {mode === 'enrolling' && setupData && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: 'var(--sw-ink-900)', lineHeight: 1.6 }}>
+            <li>Scan this QR in Google Authenticator / Authy.</li>
+            <li>Enter the 6-digit code it shows to finish.</li>
+          </ol>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <img src={setupData.qrDataUrl} alt="2FA QR code" width={132} height={132} style={{ borderRadius: 8, border: '1px solid var(--sw-line-soft)' }} />
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--sw-stone-600)', marginBottom: 4 }}>Can’t scan? Enter this key:</div>
+              <code style={{ fontSize: 12, wordBreak: 'break-all', background: 'var(--sw-line-soft)', borderRadius: 6, padding: '4px 8px', display: 'inline-block' }}>{setupData.secret}</code>
+            </div>
+          </div>
+          {codeInput(() => void confirmEnable())}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            {ghostBtn('Cancel', reset)}
+            {primaryBtn('Verify & turn on', () => void confirmEnable())}
+          </div>
+        </div>
+      )}
+
+      {/* Backup codes (shown once) */}
+      {mode === 'backup' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Callout variant="warning">Save these backup codes somewhere safe. Each works once if you lose your phone — they won’t be shown again.</Callout>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            {backupCodes.map((c) => (
+              <code key={c} style={{ fontSize: 13, textAlign: 'center', background: 'var(--sw-line-soft)', borderRadius: 6, padding: '6px 0', letterSpacing: '0.04em' }}>{c}</code>
+            ))}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            {primaryBtn('Done', reset)}
+          </div>
+        </div>
+      )}
+
+      {/* Disabling: confirm with a code */}
+      {mode === 'disabling' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <p style={{ margin: 0, fontSize: 12.5, color: 'var(--sw-ink-900)' }}>Enter a current code (or a backup code) to turn 2FA off.</p>
+          {codeInput(() => void confirmDisable())}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            {ghostBtn('Cancel', reset)}
+            {primaryBtn('Turn off 2FA', () => void confirmDisable())}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

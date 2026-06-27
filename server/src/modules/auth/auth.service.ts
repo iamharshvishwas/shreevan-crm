@@ -1,5 +1,6 @@
 import { HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { Role } from '@prisma/client';
 import { DomainError } from '../../common/errors/domain.errors';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes, createHash } from 'node:crypto';
@@ -7,12 +8,14 @@ import * as argon2 from 'argon2';
 import { PrismaService } from '../../database/prisma.service';
 import { UsersService } from '../users/users.service';
 import { AccessTokenPayload } from '../../common/auth/auth.types';
-import { TokensDto } from './dto/auth.dto';
+import { LoginResult, TokensDto } from './dto/auth.dto';
+import { TwoFactorService } from './two-factor.service';
 
 const sha256 = (v: string): string => createHash('sha256').update(v).digest('hex');
 
 const MAX_LOGIN_ATTEMPTS = 5;        // consecutive failures before lockout
 const LOCKOUT_MS = 15 * 60_000;      // 15-minute lockout
+const CHALLENGE_TTL = 300;           // 5-minute 2FA challenge window
 
 @Injectable()
 export class AuthService {
@@ -21,9 +24,16 @@ export class AuthService {
     private readonly users: UsersService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly twoFactor: TwoFactorService,
   ) {}
 
-  async login(email: string, password: string, meta?: { ip?: string; userAgent?: string }): Promise<TokensDto> {
+  /** Separate secret for the 2FA challenge token so it can never be replayed as
+   *  an access token (the access JwtStrategy uses JWT_ACCESS_SECRET). */
+  private challengeSecret(): string {
+    return sha256(`${this.config.get<string>('JWT_ACCESS_SECRET')}:2fa-challenge`);
+  }
+
+  async login(email: string, password: string, meta?: { ip?: string; userAgent?: string }): Promise<LoginResult> {
     const user = await this.users.findByEmail(email);
 
     // Account lockout: after too many failures, refuse for a cooldown window.
@@ -43,6 +53,36 @@ export class AuthService {
     // Success → clear any failure counter / lockout.
     if (user.failedLoginAttempts > 0 || user.lockedUntil) {
       await this.prisma.user.update({ where: { id: user.id }, data: { failedLoginAttempts: 0, lockedUntil: null } });
+    }
+
+    // 2FA on → password alone is not enough; hand back a short-lived challenge.
+    if (user.twoFactorEnabled) {
+      const challengeToken = await this.jwt.signAsync(
+        { sub: user.id, purpose: '2fa' },
+        { secret: this.challengeSecret(), expiresIn: CHALLENGE_TTL },
+      );
+      return { twoFactorRequired: true, challengeToken };
+    }
+
+    const tokens = await this.issueTokens({ sub: user.id, email: user.email, role: user.role }, meta);
+    // Admins must enrol in 2FA — flag it so the frontend forces setup.
+    if (user.role === Role.ADMIN) tokens.setup2faRequired = true;
+    return tokens;
+  }
+
+  /** Second step of a 2FA login: exchange the challenge + a valid code for tokens. */
+  async verify2fa(challengeToken: string, code: string, meta?: { ip?: string; userAgent?: string }): Promise<TokensDto> {
+    let payload: { sub?: string; purpose?: string };
+    try {
+      payload = await this.jwt.verifyAsync(challengeToken, { secret: this.challengeSecret() });
+    } catch {
+      throw new UnauthorizedException('Your 2FA session expired — please sign in again.');
+    }
+    if (payload.purpose !== '2fa' || !payload.sub) throw new UnauthorizedException('Invalid 2FA session.');
+    const user = await this.users.findById(payload.sub);
+    if (!user || !user.isActive || !user.twoFactorEnabled) throw new UnauthorizedException('Account unavailable.');
+    if (!(await this.twoFactor.verifyForUser(user, code))) {
+      throw new UnauthorizedException('Invalid authentication code.');
     }
     return this.issueTokens({ sub: user.id, email: user.email, role: user.role }, meta);
   }
