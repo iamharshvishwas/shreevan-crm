@@ -8,6 +8,8 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Browser shim: some SDKs (e.g. 100ms) read process.env at runtime. -->
+    <script>window.process = window.process || { env: { NODE_ENV: 'production' } };</script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

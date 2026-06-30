@@ -1,0 +1,90 @@
+import { useEffect, useRef } from 'react';
+import {
+  useHMSActions, useHMSStore, useVideo,
+  selectIsConnectedToRoom, selectPeers, selectIsLocalAudioEnabled, selectIsLocalVideoEnabled,
+} from '@100mslive/react-sdk';
+import type { JoinInfo } from './liveApi';
+
+/** Minimal shape we use from an HMS peer (structurally a subset of HMSPeer). */
+interface Peer { id: string; name: string; isLocal: boolean; videoTrack?: string }
+
+function Tile({ peer }: { peer: Peer }) {
+  const { videoRef } = useVideo({ trackId: peer.videoTrack });
+  return (
+    <div style={{ position: 'relative', background: '#0d1f1a', borderRadius: 12, overflow: 'hidden', aspectRatio: '16 / 10' }}>
+      {peer.videoTrack ? (
+        <video ref={videoRef} autoPlay muted={peer.isLocal} playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', transform: peer.isLocal ? 'scaleX(-1)' : undefined }} />
+      ) : (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.6)', fontSize: 28, fontWeight: 600 }}>
+          {peer.name?.[0]?.toUpperCase() ?? '?'}
+        </div>
+      )}
+      <div style={{ position: 'absolute', left: 8, bottom: 8, fontSize: 11.5, fontWeight: 600, color: '#fff', background: 'rgba(0,0,0,0.45)', borderRadius: 6, padding: '2px 8px' }}>
+        {peer.name}{peer.isLocal ? ' (You)' : ''}
+      </div>
+    </div>
+  );
+}
+
+const ctrlBtn = (active: boolean) => ({
+  height: 42, minWidth: 42, padding: '0 16px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.22)',
+  background: active ? 'rgba(255,255,255,0.12)' : '#b5443a', color: '#fff', fontFamily: 'var(--font-body)',
+  fontSize: 13, fontWeight: 600, cursor: 'pointer',
+} as const);
+
+export function VideoRoom({ info, userName, onLeave }: { info: JoinInfo; userName: string; onLeave: () => void }) {
+  const actions = useHMSActions();
+  const connected = useHMSStore(selectIsConnectedToRoom);
+  const peers = useHMSStore(selectPeers) as Peer[];
+  const audioOn = useHMSStore(selectIsLocalAudioEnabled);
+  const videoOn = useHMSStore(selectIsLocalVideoEnabled);
+  const joinedRef = useRef(false);
+
+  // Join once when we have a token; always leave on unmount.
+  useEffect(() => {
+    if (info.videoEnabled && info.token && !joinedRef.current) {
+      joinedRef.current = true;
+      actions.join({ authToken: info.token, userName }).catch(() => { joinedRef.current = false; });
+    }
+    return () => { actions.leave().catch(() => undefined); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [info.token]);
+
+  async function leave() {
+    await actions.leave().catch(() => undefined);
+    onLeave();
+  }
+
+  // Video not configured yet (no 100ms keys) — clear, friendly placeholder.
+  if (!info.videoEnabled) {
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, background: '#0d1f1a', borderRadius: 14, color: 'rgba(255,255,255,0.8)', textAlign: 'center', padding: 24 }}>
+        <div style={{ fontSize: 40 }}>🎥</div>
+        <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 17, color: '#fff' }}>Video will activate shortly</div>
+        <div style={{ fontSize: 13, maxWidth: 360 }}>The class is live. Video turns on as soon as the 100ms keys are configured — no rejoining needed.</div>
+        <button onClick={onLeave} style={{ marginTop: 10, ...ctrlBtn(true) }}>Leave</button>
+      </div>
+    );
+  }
+
+  if (!connected) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0d1f1a', borderRadius: 14, color: 'rgba(255,255,255,0.8)', fontSize: 14 }}>
+        Connecting to the class…
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+      <div style={{ flex: 1, display: 'grid', gap: 10, gridTemplateColumns: `repeat(${peers.length <= 1 ? 1 : peers.length <= 4 ? 2 : 3}, 1fr)`, alignContent: 'start' }}>
+        {peers.map((p) => <Tile key={p.id} peer={p} />)}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 10, padding: '4px 0' }}>
+        <button onClick={() => actions.setLocalAudioEnabled(!audioOn)} style={ctrlBtn(audioOn)}>{audioOn ? '🎙 Mute' : '🔇 Unmute'}</button>
+        <button onClick={() => actions.setLocalVideoEnabled(!videoOn)} style={ctrlBtn(videoOn)}>{videoOn ? '📹 Stop video' : '🚫 Start video'}</button>
+        <button onClick={() => void leave()} style={ctrlBtn(false)}>Leave</button>
+      </div>
+    </div>
+  );
+}
