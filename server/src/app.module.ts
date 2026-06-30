@@ -24,6 +24,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { JobsModule } from './jobs/jobs.module';
 import { VedaModule } from './modules/veda/veda.module';
+import { LiveClassModule } from './modules/liveclass/liveclass.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { VedaModule } from './modules/veda/veda.module';
     ReportsModule,
     JobsModule,
     VedaModule,
+    LiveClassModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

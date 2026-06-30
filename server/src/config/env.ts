@@ -69,6 +69,11 @@ export const envSchema = z.object({
   // pronunciation hints in the assistant prompt. Lets you tune for new programs
   // without redeploying. Example: "Shreevan,Shreevan Wellness,Sattva".
   VOICE_VOCAB_BOOST: z.string().default('Shreevan,Shreevan Wellness,Sattva,Veda,Ayurveda,sattvic,namaste,pranayama'),
+
+  // --- Live Classes video (100ms / HMS; all optional — video no-ops until set) ---
+  HMS_ACCESS_KEY: z.string().optional(),   // 100ms App Access Key
+  HMS_SECRET: z.string().optional(),       // 100ms App Secret (signs room/auth tokens)
+  HMS_TEMPLATE_ID: z.string().optional(),  // 100ms template rooms are created from
 });
 
 export type Env = z.infer<typeof envSchema>;

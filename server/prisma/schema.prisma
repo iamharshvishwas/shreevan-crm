@@ -201,6 +201,7 @@ model User {
   ownedLeads      Lead[]          @relation("LeadOwner")
   ownedTasks      Task[]          @relation("TaskOwner")
   ownedCalls      DiscoveryCall[] @relation("CallOwner")
+  hostedClasses   LiveClass[]     @relation("ClassHost")
 
   @@index([role])
 }
@@ -885,4 +886,110 @@ model NurtureEnrollment {
   updatedAt     DateTime      @updatedAt
 
   @@index([status, nextRunAt])
+}
+
+// ---------------------------------------------------------------------------
+// Live Classes — public participants join a hosted class with 100ms video,
+// a two-way live chat, and live polls. Participants are separate from staff
+// Users (their own signup/auth) so public signups never touch the CRM.
+// ---------------------------------------------------------------------------
+
+enum LiveClassStatus {
+  SCHEDULED // created, not started yet
+  LIVE      // host has started it — joinable
+  ENDED     // finished
+}
+
+// Public learner who signs up to join classes. Isolated from staff User.
+model Participant {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  messages ClassMessage[]
+  votes    PollVote[]
+
+  @@index([email])
+}
+
+model LiveClass {
+  id          String          @id @default(uuid())
+  title       String          // e.g. "cloud101"
+  slug        String          @unique // join handle, e.g. "cloud101"
+  description String?
+  status      LiveClassStatus @default(SCHEDULED)
+  hmsRoomId   String?         // 100ms room id (created on first start)
+  hostId      String
+  host        User            @relation("ClassHost", fields: [hostId], references: [id])
+  scheduledAt DateTime?
+  startedAt   DateTime?
+  endedAt     DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  messages ClassMessage[]
+  polls    Poll[]
+
+  @@index([status])
+  @@index([hostId])
+}
+
+// One chat line in a class. Author is a participant OR the staff host (one set).
+model ClassMessage {
+  id            String       @id @default(uuid())
+  classId       String
+  liveClass     LiveClass    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  participantId String?
+  participant   Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  authorName    String       // denormalized for fast render
+  isHost        Boolean      @default(false)
+  body          String
+  createdAt     DateTime     @default(now())
+
+  @@index([classId, createdAt])
+}
+
+model Poll {
+  id        String       @id @default(uuid())
+  classId   String
+  liveClass LiveClass    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  question  String
+  isOpen    Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  closedAt  DateTime?
+
+  options PollOption[]
+  votes   PollVote[]
+
+  @@index([classId])
+}
+
+model PollOption {
+  id     String     @id @default(uuid())
+  pollId String
+  poll   Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  text   String
+  order  Int        @default(0)
+
+  votes PollVote[]
+
+  @@index([pollId])
+}
+
+// One vote per participant per poll (enforced by the unique pair).
+model PollVote {
+  id            String      @id @default(uuid())
+  pollId        String
+  poll          Poll        @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  optionId      String
+  option        PollOption  @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  participantId String
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+
+  @@unique([pollId, participantId])
+  @@index([pollId])
 }
