@@ -3,7 +3,9 @@ import {
   useHMSActions, useHMSStore, useVideo,
   selectIsConnectedToRoom, selectPeers, selectIsLocalAudioEnabled, selectIsLocalVideoEnabled,
 } from '@100mslive/react-sdk';
-import type { JoinInfo } from './liveApi';
+
+/** Just the join bits VideoRoom needs — shared by learner (/live) and host (/teach). */
+export interface RoomToken { videoEnabled: boolean; token: string | null }
 
 /** Minimal shape we use from an HMS peer (structurally a subset of HMSPeer). */
 interface Peer { id: string; name: string; isLocal: boolean; videoTrack?: string }
@@ -32,7 +34,7 @@ const ctrlBtn = (active: boolean) => ({
   fontSize: 13, fontWeight: 600, cursor: 'pointer',
 } as const);
 
-export function VideoRoom({ info, userName, onLeave }: { info: JoinInfo; userName: string; onLeave: () => void }) {
+export function VideoRoom({ room, userName, onLeave }: { room: RoomToken; userName: string; onLeave: () => void }) {
   const actions = useHMSActions();
   const connected = useHMSStore(selectIsConnectedToRoom);
   const peers = useHMSStore(selectPeers) as Peer[];
@@ -42,13 +44,13 @@ export function VideoRoom({ info, userName, onLeave }: { info: JoinInfo; userNam
 
   // Join once when we have a token; always leave on unmount.
   useEffect(() => {
-    if (info.videoEnabled && info.token && !joinedRef.current) {
+    if (room.videoEnabled && room.token && !joinedRef.current) {
       joinedRef.current = true;
-      actions.join({ authToken: info.token, userName }).catch(() => { joinedRef.current = false; });
+      actions.join({ authToken: room.token, userName }).catch(() => { joinedRef.current = false; });
     }
     return () => { actions.leave().catch(() => undefined); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [info.token]);
+  }, [room.token]);
 
   async function leave() {
     await actions.leave().catch(() => undefined);
@@ -56,7 +58,7 @@ export function VideoRoom({ info, userName, onLeave }: { info: JoinInfo; userNam
   }
 
   // Video not configured yet (no 100ms keys) — clear, friendly placeholder.
-  if (!info.videoEnabled) {
+  if (!room.videoEnabled) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, background: '#0d1f1a', borderRadius: 14, color: 'rgba(255,255,255,0.8)', textAlign: 'center', padding: 24 }}>
         <div style={{ fontSize: 40 }}>🎥</div>

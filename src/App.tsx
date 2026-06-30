@@ -16,6 +16,7 @@ import { Settings } from './screens/Settings';
 import { Tasks } from './screens/Tasks';
 import { Veda } from './screens/Veda';
 import { LiveChat } from './screens/LiveChat';
+import { Instructors } from './screens/Instructors';
 import { Login } from './screens/Login';
 import { useAppStore } from './store';
 import { useAuth, type AuthStore } from './auth/useAuth';
@@ -57,6 +58,8 @@ function AuthedApp({ auth }: { auth: AuthStore }) {
         return <Veda app={app} />;
       case 'livechat':
         return <LiveChat app={app} />;
+      case 'instructors':
+        return <Instructors app={app} />;
       default:
         return <Overview app={app} />;
     }

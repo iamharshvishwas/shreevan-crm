@@ -2,8 +2,8 @@ import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { LiveClassService } from './liveclass.service';
 import { CreateLiveClassDto } from './dto/liveclass.dto';
-import { CurrentUser, Public } from '../../common/auth/decorators';
-import type { AuthUser } from '../../common/auth/auth.types';
+import { Public } from '../../common/auth/decorators';
+import { AuthInstructor, CurrentInstructor, InstructorGuard } from './instructor/instructor-auth.guard';
 import { AuthParticipant, CurrentParticipant, ParticipantGuard } from './participant/participant-auth.guard';
 
 @ApiTags('live-classes')
@@ -11,39 +11,49 @@ import { AuthParticipant, CurrentParticipant, ParticipantGuard } from './partici
 export class LiveClassController {
   constructor(private readonly classes: LiveClassService) {}
 
-  // ---- Host (staff — global JWT guard) ----
+  // ---- Host (instructor token) ----
 
+  @Public()
   @ApiBearerAuth()
+  @UseGuards(InstructorGuard)
   @Post()
-  create(@Body() dto: CreateLiveClassDto, @CurrentUser() user: AuthUser) {
-    return this.classes.create(user, dto);
+  create(@Body() dto: CreateLiveClassDto, @CurrentInstructor() host: AuthInstructor) {
+    return this.classes.create(host, dto);
   }
 
+  @Public()
   @ApiBearerAuth()
+  @UseGuards(InstructorGuard)
   @Get('host')
-  listForHost(@CurrentUser() user: AuthUser) {
-    return this.classes.listForHost(user);
+  listForHost(@CurrentInstructor() host: AuthInstructor) {
+    return this.classes.listForHost(host);
   }
 
+  @Public()
   @ApiBearerAuth()
+  @UseGuards(InstructorGuard)
   @Post(':id/start')
-  start(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.classes.start(id, user);
+  start(@Param('id') id: string, @CurrentInstructor() host: AuthInstructor) {
+    return this.classes.start(id, host);
   }
 
+  @Public()
   @ApiBearerAuth()
+  @UseGuards(InstructorGuard)
   @Post(':id/end')
-  end(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.classes.end(id, user);
+  end(@Param('id') id: string, @CurrentInstructor() host: AuthInstructor) {
+    return this.classes.end(id, host);
   }
 
+  @Public()
   @ApiBearerAuth()
+  @UseGuards(InstructorGuard)
   @Post(':id/host-token')
-  hostToken(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.classes.hostToken(id, user);
+  hostToken(@Param('id') id: string, @CurrentInstructor() host: AuthInstructor) {
+    return this.classes.hostToken(id, host);
   }
 
-  // ---- Participant (public route, participant token) ----
+  // ---- Participant (participant token) ----
 
   @Public()
   @ApiBearerAuth()

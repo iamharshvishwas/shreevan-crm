@@ -12,7 +12,7 @@ const ROLE_LABEL: Record<string, string> = {
   OPERATIONS: 'Operations manager',
 };
 
-const NAV: { key: ScreenKey; label: string; icon: JSX.Element }[] = [
+const NAV: { key: ScreenKey; label: string; icon: JSX.Element; adminOnly?: boolean }[] = [
   { key: 'overview', label: 'Overview', icon: <Ic parts={[{ r: [3, 3, 7, 9, 1.5] }, { r: [14, 3, 7, 5, 1.5] }, { r: [14, 12, 7, 9, 1.5] }, { r: [3, 16, 7, 5, 1.5] }]} /> },
   { key: 'enquiries', label: 'Enquiries', icon: <Ic parts={['M22 12h-6l-2 3h-4l-2-3H2', 'M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z']} /> },
   { key: 'livechat', label: 'Live Chat', icon: <Ic parts={['M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z']} /> },
@@ -24,6 +24,7 @@ const NAV: { key: ScreenKey; label: string; icon: JSX.Element }[] = [
   { key: 'reports', label: 'Reports', icon: <Ic parts={['M3 3v18h18', 'M18 17V9', 'M13 17V5', 'M8 17v-3']} /> },
   { key: 'customers', label: 'Confirmed Customers', icon: <Ic parts={['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', { c: [9, 7, 4] }, 'm16 11 2 2 4-4']} /> },
   { key: 'veda', label: 'Veda — AI Agent', icon: <Ic parts={['M12 2a10 10 0 1 0 10 10', 'M12 6v6l4 2', 'M20 2v4h4', 'M22 2 17 7']} /> },
+  { key: 'instructors', label: 'Instructors', icon: <Ic parts={['M22 10v6M2 10l10-5 10 5-10 5z', 'M6 12v5c3 3 9 3 12 0v-5']} />, adminOnly: true },
   { key: 'settings', label: 'Settings', icon: <Ic parts={['M20 7h-9', 'M14 17H5', { c: [17, 17, 3] }, { c: [7, 7, 3] }]} /> },
 ];
 
@@ -73,7 +74,7 @@ export function Sidebar({ app, auth }: { app: AppStore; auth: AuthStore }) {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '8px 12px', flex: 1, overflowY: 'auto' }}>
-        {NAV.map((item) => {
+        {NAV.filter((item) => !item.adminOnly || auth.user?.role === 'ADMIN').map((item) => {
           const active = app.screen === item.key && !app.selectedLeadId;
           const badge = item.key === 'enquiries' ? enquiryBadge : 0;
           return (

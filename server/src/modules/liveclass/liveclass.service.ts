@@ -1,8 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { LiveClassStatus, Role } from '@prisma/client';
+import { LiveClassStatus } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { HmsService } from './hms.service';
-import type { AuthUser } from '../../common/auth/auth.types';
+import type { AuthInstructor } from './instructor/instructor-auth.guard';
 import type { AuthParticipant } from './participant/participant-auth.guard';
 
 const slugify = (s: string): string =>
@@ -15,9 +15,9 @@ export class LiveClassService {
     private readonly hms: HmsService,
   ) {}
 
-  // ---- Host (staff) ----
+  // ---- Host (instructor) ----
 
-  async create(host: AuthUser, input: { title: string; description?: string; scheduledAt?: string }) {
+  async create(host: AuthInstructor, input: { title: string; description?: string; scheduledAt?: string }) {
     const title = input.title.trim();
     if (title.length < 2) throw new BadRequestException('Class needs a title.');
     const slug = await this.uniqueSlug(slugify(title));
@@ -32,13 +32,12 @@ export class LiveClassService {
     });
   }
 
-  listForHost(host: AuthUser) {
-    const where = host.role === Role.ADMIN ? {} : { hostId: host.id };
-    return this.prisma.liveClass.findMany({ where, orderBy: [{ status: 'asc' }, { createdAt: 'desc' }], take: 100 });
+  listForHost(host: AuthInstructor) {
+    return this.prisma.liveClass.findMany({ where: { hostId: host.id }, orderBy: [{ status: 'asc' }, { createdAt: 'desc' }], take: 100 });
   }
 
   /** Start a class: create the 100ms room (if video configured) and mark it LIVE. */
-  async start(id: string, host: AuthUser) {
+  async start(id: string, host: AuthInstructor) {
     const cls = await this.ownedOrThrow(id, host);
     let hmsRoomId = cls.hmsRoomId;
     if (!hmsRoomId && this.hms.isConfigured()) {
@@ -50,7 +49,7 @@ export class LiveClassService {
     });
   }
 
-  async end(id: string, host: AuthUser) {
+  async end(id: string, host: AuthInstructor) {
     await this.ownedOrThrow(id, host);
     return this.prisma.liveClass.update({
       where: { id },
@@ -59,7 +58,7 @@ export class LiveClassService {
   }
 
   /** A host's own token to join the live room with the 'host' role. */
-  async hostToken(id: string, host: AuthUser) {
+  async hostToken(id: string, host: AuthInstructor) {
     const cls = await this.ownedOrThrow(id, host);
     if (cls.status !== LiveClassStatus.LIVE) throw new BadRequestException('Start the class first.');
     const video = this.hms.isConfigured() && !!cls.hmsRoomId;
@@ -103,10 +102,10 @@ export class LiveClassService {
 
   // ---- helpers ----
 
-  private async ownedOrThrow(id: string, host: AuthUser) {
+  private async ownedOrThrow(id: string, host: AuthInstructor) {
     const cls = await this.prisma.liveClass.findUnique({ where: { id } });
     if (!cls) throw new NotFoundException('Class not found.');
-    if (host.role !== Role.ADMIN && cls.hostId !== host.id) {
+    if (cls.hostId !== host.id) {
       throw new ForbiddenException('This class belongs to another host.');
     }
     return cls;
