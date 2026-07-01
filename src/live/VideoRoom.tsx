@@ -98,7 +98,13 @@ export function VideoRoom({ room, roles, userName, onLeave }: { room: RoomToken;
         setError((e as Error)?.message || 'Could not connect to the video room.');
       });
     }
-    return () => { actions.leave().catch(() => undefined); };
+    // Reset the guard on cleanup so a remount (e.g. React StrictMode in dev)
+    // rejoins after the cleanup's leave() — otherwise the room gets stuck on
+    // "Connecting…" forever.
+    return () => {
+      joinedRef.current = false;
+      actions.leave().catch(() => undefined);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.token]);
 

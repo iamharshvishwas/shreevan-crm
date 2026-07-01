@@ -4,6 +4,7 @@ import { ChatPanel } from './ChatPanel';
 import { PollPanel } from './PollPanel';
 import { ClassEndedOverlay } from './ClassEndedOverlay';
 import { useClassEnded } from './useClassEnded';
+import { useIsNarrow } from './useIsNarrow';
 import { liveApi, type JoinInfo, type JoinableClass } from './liveApi';
 import type { ChatApi, PollApi } from './roomTypes';
 
@@ -11,6 +12,7 @@ type Tab = 'chat' | 'poll';
 
 export function ClassRoom({ info, cls, userName, onLeave }: { info: JoinInfo; cls: JoinableClass; userName: string; onLeave: () => void }) {
   const [tab, setTab] = useState<Tab>('chat');
+  const narrow = useIsNarrow();
   const ended = useClassEnded(info.classId, liveApi.getStatus);
   const chatApi: ChatApi = useMemo(() => ({
     list: () => liveApi.listMessages(info.classId),
@@ -44,11 +46,11 @@ export function ClassRoom({ info, cls, userName, onLeave }: { info: JoinInfo; cl
         </button>
       </div>
 
-      {/* body: video + side panel */}
-      <div style={{ flex: 1, display: 'flex', gap: 14, padding: '0 14px 14px', minHeight: 0 }}>
+      {/* body: video + side panel (stacks vertically on phones) */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: narrow ? 'column' : 'row', gap: 14, padding: '0 14px 14px', minHeight: 0 }}>
         <VideoRoom room={{ videoEnabled: info.videoEnabled, token: info.token }} roles={info.roles} userName={userName} onLeave={onLeave} />
 
-        <aside style={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 14, overflow: 'hidden' }}>
+        <aside style={{ width: narrow ? 'auto' : 320, height: narrow ? 280 : 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 14, overflow: 'hidden' }}>
           <div style={{ display: 'flex', borderBottom: '1px solid var(--sw-line-soft)' }}>
             {tabBtn('chat', '💬 Chat')}
             {tabBtn('poll', '📊 Poll')}

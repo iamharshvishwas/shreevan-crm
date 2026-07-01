@@ -4,15 +4,33 @@ import { ChatPanel } from '../live/ChatPanel';
 import { PollPanel } from '../live/PollPanel';
 import { ClassEndedOverlay } from '../live/ClassEndedOverlay';
 import { useClassEnded } from '../live/useClassEnded';
+import { useIsNarrow } from '../live/useIsNarrow';
 import type { ChatApi, PollApi } from '../live/roomTypes';
-import { teachApi, type HostRoomInfo } from './teachApi';
+import { teachApi, TeachApiError, type HostRoomInfo } from './teachApi';
 
 type Tab = 'chat' | 'poll';
 
 export function HostRoom({ info, hostName, onLeave }: { info: HostRoomInfo; hostName: string; onLeave: () => void }) {
   const [tab, setTab] = useState<Tab>('chat');
+  const [endBusy, setEndBusy] = useState(false);
+  const [endError, setEndError] = useState<string | null>(null);
+  const narrow = useIsNarrow();
   // Covers the edge case of ending the class from another tab/session.
   const ended = useClassEnded(info.classId, teachApi.getStatus);
+
+  /** End the class for everyone — confirmation guards against an accidental click. */
+  async function endClass() {
+    if (!window.confirm(`End "${info.title}" for everyone? Participants will be notified that the class is over.`)) return;
+    setEndBusy(true);
+    setEndError(null);
+    try {
+      await teachApi.end(info.classId);
+      onLeave(); // leaves the room; participants see the "class has ended" popup
+    } catch (e) {
+      setEndError(e instanceof TeachApiError ? e.message : 'Could not end the class — try again.');
+      setEndBusy(false);
+    }
+  }
   const chatApi: ChatApi = useMemo(() => ({
     list: () => teachApi.listMessages(info.classId),
     send: (b) => teachApi.postMessage(info.classId, b),
@@ -40,14 +58,21 @@ export function HostRoom({ info, hostName, onLeave }: { info: HostRoomInfo; host
           <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 16 }}>{info.title}</span>
           <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>Hosting · Live</span>
         </div>
-        <button onClick={onLeave} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: 999, padding: '6px 16px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
-          ← Back to my classes
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {endError && <span style={{ fontSize: 12, color: '#f2b8b5', fontWeight: 600 }}>{endError}</span>}
+          <button onClick={() => void endClass()} disabled={endBusy}
+            style={{ background: '#b5443a', border: '1px solid #b5443a', color: '#fff', borderRadius: 999, padding: '6px 16px', fontSize: 12.5, fontWeight: 700, cursor: endBusy ? 'default' : 'pointer', opacity: endBusy ? 0.6 : 1 }}>
+            {endBusy ? 'Ending…' : '⏹ End class'}
+          </button>
+          <button onClick={onLeave} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: 999, padding: '6px 16px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+            ← Back to my classes
+          </button>
+        </div>
       </div>
 
-      <div style={{ flex: 1, display: 'flex', gap: 14, padding: '0 14px 14px', minHeight: 0 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: narrow ? 'column' : 'row', gap: 14, padding: '0 14px 14px', minHeight: 0 }}>
         <VideoRoom room={{ videoEnabled: info.videoEnabled, token: info.token }} roles={info.roles} userName={hostName} onLeave={onLeave} />
-        <aside style={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 14, overflow: 'hidden' }}>
+        <aside style={{ width: narrow ? 'auto' : 320, height: narrow ? 280 : 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 14, overflow: 'hidden' }}>
           <div style={{ display: 'flex', borderBottom: '1px solid var(--sw-line-soft)' }}>
             {tabBtn('chat', '💬 Chat')}
             {tabBtn('poll', '📊 Poll')}
