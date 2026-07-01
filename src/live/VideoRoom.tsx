@@ -145,13 +145,15 @@ export function VideoRoom({ room, roles, userName, onLeave }: { room: RoomToken;
 
   let mainArea;
   if (screenTrackId) {
-    // Screen share on → big screen + a small camera strip.
+    // Screen share on → screen fills the stage; cameras float over it (Zoom-style PiP).
     mainArea = (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 }}>
-        <div style={{ flex: 1, minHeight: 0 }}><ScreenTile trackId={screenTrackId} label={`${screenPeer?.name ?? 'Host'} is sharing`} /></div>
-        <div style={{ display: 'flex', gap: 8, height: 92, overflowX: 'auto' }}>
-          {stagePeers.map((p) => (
-            <div key={p.id} style={{ width: 150, flexShrink: 0 }}><Tile peer={p} highlight={dominant?.id === p.id} /></div>
+      <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+        <ScreenTile trackId={screenTrackId} label={`${screenPeer?.name ?? 'Host'} is sharing`} />
+        <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', flexDirection: 'column', gap: 8, width: 168, maxHeight: '88%', overflowY: 'auto' }}>
+          {stagePeers.slice(0, 4).map((p) => (
+            <div key={p.id} style={{ width: 168, borderRadius: 10, overflow: 'hidden', boxShadow: '0 4px 14px rgba(0,0,0,0.45)' }}>
+              <Tile peer={p} highlight={dominant?.id === p.id} />
+            </div>
           ))}
         </div>
       </div>
