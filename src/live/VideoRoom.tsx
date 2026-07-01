@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  useHMSActions, useHMSStore, useVideo,
+  useHMSActions, useHMSStore, useVideo, useScreenShare,
   selectIsConnectedToRoom, selectPeers, selectPeerCount, selectDominantSpeaker,
   selectLocalPeer, selectLocalPeerRoleName, selectIsLocalAudioEnabled, selectIsLocalVideoEnabled,
+  selectPeerScreenSharing, selectScreenShareByPeerID,
 } from '@100mslive/react-sdk';
 import type { Roles } from './roomTypes';
 
@@ -32,6 +33,16 @@ function Tile({ peer, highlight, big }: { peer: Peer; highlight?: boolean; big?:
   );
 }
 
+function ScreenTile({ trackId, label }: { trackId: string; label?: string }) {
+  const { videoRef } = useVideo({ trackId });
+  return (
+    <div style={{ position: 'relative', background: '#000', borderRadius: 12, overflow: 'hidden', height: '100%', width: '100%' }}>
+      <video ref={videoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+      {label && <div style={{ position: 'absolute', left: 8, top: 8, fontSize: 11.5, fontWeight: 600, color: '#fff', background: 'rgba(0,0,0,0.5)', borderRadius: 6, padding: '2px 8px' }}>🖥 {label}</div>}
+    </div>
+  );
+}
+
 const ctrlBtn = (active: boolean) => ({
   height: 42, minWidth: 42, padding: '0 16px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.22)',
   background: active ? 'rgba(255,255,255,0.12)' : '#b5443a', color: '#fff', fontFamily: 'var(--font-body)',
@@ -53,6 +64,10 @@ export function VideoRoom({ room, roles, userName, onLeave }: { room: RoomToken;
   const myRole = useHMSStore(selectLocalPeerRoleName);
   const audioOn = useHMSStore(selectIsLocalAudioEnabled);
   const videoOn = useHMSStore(selectIsLocalVideoEnabled);
+  const { amIScreenSharing, toggleScreenShare } = useScreenShare();
+  const screenPeer = useHMSStore(selectPeerScreenSharing) as Peer | undefined;
+  const screenTrack = useHMSStore(selectScreenShareByPeerID(screenPeer?.id ?? '')) as { id?: string } | undefined;
+  const screenTrackId = screenTrack?.id;
   const joinedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [slow, setSlow] = useState(false);
@@ -79,7 +94,6 @@ export function VideoRoom({ room, roles, userName, onLeave }: { room: RoomToken;
 
   async function leave() { await actions.leave().catch(() => undefined); onLeave(); }
 
-  // ---- states before the room UI ----
   if (!room.videoEnabled) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, background: '#0d1f1a', borderRadius: 14, color: 'rgba(255,255,255,0.8)', textAlign: 'center', padding: 24 }}>
@@ -111,7 +125,7 @@ export function VideoRoom({ room, roles, userName, onLeave }: { room: RoomToken;
     );
   }
 
-  // ---- connected: derive who is who ----
+  // ---- connected ----
   const isHost = myRole === roles.host;
   const onStage = myRole === roles.stage;
   const canPublish = isHost || onStage;
@@ -119,34 +133,57 @@ export function VideoRoom({ room, roles, userName, onLeave }: { room: RoomToken;
   const raisedHands = peers.filter((p) => p.roleName === roles.viewer && p.isHandRaised);
   const handRaised = !!localPeer?.isHandRaised;
 
-  // ---------- View-only student: spotlight + raise hand ----------
-  if (!canPublish) {
-    const spotlight = (dominant && stagePeers.find((p) => p.id === dominant.id))
-      ?? stagePeers.find((p) => p.roleName === roles.host)
-      ?? stagePeers[0];
-    return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
-        <div style={{ flex: 1, minHeight: 0 }}>
-          {spotlight
-            ? <Tile peer={spotlight} big />
-            : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0d1f1a', borderRadius: 12, color: 'rgba(255,255,255,0.75)', fontSize: 14 }}>Waiting for the host to start the video…</div>}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '4px 0' }}>
-          <span style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.7)' }}>👁 Watching · {peerCount} in class</span>
-          {handRaised
-            ? <button onClick={() => actions.lowerLocalPeerHand()} style={{ ...lightBtn, background: 'rgba(212,163,74,0.3)' }}>✋ Hand raised · lower</button>
-            : <button onClick={() => actions.raiseLocalPeerHand()} style={lightBtn}>✋ Raise hand</button>}
-          <button onClick={() => void leave()} style={ctrlBtn(false)}>Leave</button>
-        </div>
-      </div>
-    );
-  }
-
-  // ---------- Host / on-stage: gallery + controls (+ host hand-raise panel) ----------
+  // Shared "main stage": a live screen share takes over everywhere; otherwise
+  // host/on-stage see a paginated camera gallery and viewers see the host.
   const pages = Math.max(1, Math.ceil(stagePeers.length / TILES_PER_PAGE));
   const pageSafe = Math.min(page, pages - 1);
   const shown = stagePeers.slice(pageSafe * TILES_PER_PAGE, pageSafe * TILES_PER_PAGE + TILES_PER_PAGE);
   const cols = shown.length <= 1 ? 1 : shown.length <= 4 ? 2 : 3;
+  const spotlight = (dominant && stagePeers.find((p) => p.id === dominant.id))
+    ?? stagePeers.find((p) => p.roleName === roles.host)
+    ?? stagePeers[0];
+
+  let mainArea;
+  if (screenTrackId) {
+    // Screen share on → big screen + a small camera strip.
+    mainArea = (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 }}>
+        <div style={{ flex: 1, minHeight: 0 }}><ScreenTile trackId={screenTrackId} label={`${screenPeer?.name ?? 'Host'} is sharing`} /></div>
+        <div style={{ display: 'flex', gap: 8, height: 92, overflowX: 'auto' }}>
+          {stagePeers.map((p) => (
+            <div key={p.id} style={{ width: 150, flexShrink: 0 }}><Tile peer={p} highlight={dominant?.id === p.id} /></div>
+          ))}
+        </div>
+      </div>
+    );
+  } else if (canPublish) {
+    mainArea = (
+      <>
+        <div style={{ flex: 1, display: 'grid', gap: 10, gridTemplateColumns: `repeat(${cols}, 1fr)`, alignContent: 'start', minHeight: 0 }}>
+          {shown.map((p) => (
+            <div key={p.id} style={{ position: 'relative' }}>
+              <Tile peer={p} highlight={dominant?.id === p.id} />
+              {isHost && !p.isLocal && p.roleName === roles.stage && (
+                <button onClick={() => actions.changeRoleOfPeer(p.id, roles.viewer, true).catch(() => undefined)} title="Remove from stage"
+                  style={{ position: 'absolute', top: 6, right: 6, width: 24, height: 24, borderRadius: 999, border: 'none', background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 13, cursor: 'pointer' }}>×</button>
+              )}
+            </div>
+          ))}
+        </div>
+        {pages > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, color: '#fff', fontSize: 12.5 }}>
+            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={pageSafe === 0} style={{ ...lightBtn, height: 30, opacity: pageSafe === 0 ? 0.5 : 1 }}>‹</button>
+            <span>{pageSafe + 1} / {pages} · {peerCount} in class</span>
+            <button onClick={() => setPage((p) => Math.min(pages - 1, p + 1))} disabled={pageSafe >= pages - 1} style={{ ...lightBtn, height: 30, opacity: pageSafe >= pages - 1 ? 0.5 : 1 }}>›</button>
+          </div>
+        )}
+      </>
+    );
+  } else {
+    mainArea = spotlight
+      ? <div style={{ flex: 1, minHeight: 0 }}><Tile peer={spotlight} big /></div>
+      : <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0d1f1a', borderRadius: 12, color: 'rgba(255,255,255,0.75)', fontSize: 14 }}>Waiting for the host to start the video…</div>;
+  }
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
@@ -156,37 +193,34 @@ export function VideoRoom({ room, roles, userName, onLeave }: { room: RoomToken;
           {raisedHands.slice(0, 6).map((p) => (
             <button key={p.id} onClick={() => { actions.changeRoleOfPeer(p.id, roles.stage, true).catch(() => undefined); actions.lowerRemotePeerHand(p.id).catch(() => undefined); }}
               style={{ height: 28, padding: '0 12px', borderRadius: 999, border: '1px solid var(--sw-moss-600)', background: 'var(--sw-moss-600)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-              {p.name} → Bring on stage
+              {p.name} → Allow to speak
             </button>
           ))}
         </div>
       )}
 
-      <div style={{ flex: 1, display: 'grid', gap: 10, gridTemplateColumns: `repeat(${cols}, 1fr)`, alignContent: 'start', minHeight: 0 }}>
-        {shown.map((p) => (
-          <div key={p.id} style={{ position: 'relative' }}>
-            <Tile peer={p} highlight={dominant?.id === p.id} />
-            {isHost && !p.isLocal && p.roleName === roles.stage && (
-              <button onClick={() => actions.changeRoleOfPeer(p.id, roles.viewer, true).catch(() => undefined)}
-                title="Remove from stage"
-                style={{ position: 'absolute', top: 6, right: 6, width: 24, height: 24, borderRadius: 999, border: 'none', background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 13, cursor: 'pointer' }}>×</button>
+      {mainArea}
+
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 10, padding: '4px 0', flexWrap: 'wrap' }}>
+        {canPublish ? (
+          <>
+            <button onClick={() => actions.setLocalAudioEnabled(!audioOn)} style={ctrlBtn(audioOn)}>{audioOn ? '🎙 Mute' : '🔇 Unmute'}</button>
+            <button onClick={() => actions.setLocalVideoEnabled(!videoOn)} style={ctrlBtn(videoOn)}>{videoOn ? '📹 Stop video' : '🚫 Start video'}</button>
+            {toggleScreenShare && (
+              <button onClick={() => toggleScreenShare().catch(() => undefined)} style={amIScreenSharing ? ctrlBtn(false) : lightBtn}>
+                {amIScreenSharing ? '🖥 Stop share' : '🖥 Share screen'}
+              </button>
             )}
-          </div>
-        ))}
-      </div>
-
-      {pages > 1 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, color: '#fff', fontSize: 12.5 }}>
-          <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={pageSafe === 0} style={{ ...lightBtn, height: 30, opacity: pageSafe === 0 ? 0.5 : 1 }}>‹</button>
-          <span>{pageSafe + 1} / {pages} · {peerCount} in class</span>
-          <button onClick={() => setPage((p) => Math.min(pages - 1, p + 1))} disabled={pageSafe >= pages - 1} style={{ ...lightBtn, height: 30, opacity: pageSafe >= pages - 1 ? 0.5 : 1 }}>›</button>
-        </div>
-      )}
-
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 10, padding: '4px 0' }}>
-        <button onClick={() => actions.setLocalAudioEnabled(!audioOn)} style={ctrlBtn(audioOn)}>{audioOn ? '🎙 Mute' : '🔇 Unmute'}</button>
-        <button onClick={() => actions.setLocalVideoEnabled(!videoOn)} style={ctrlBtn(videoOn)}>{videoOn ? '📹 Stop video' : '🚫 Start video'}</button>
-        {onStage && <button onClick={() => actions.lowerLocalPeerHand()} style={lightBtn} title="You're on stage">On stage</button>}
+            {onStage && <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>You’re on stage</span>}
+          </>
+        ) : (
+          <>
+            <span style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.7)' }}>👁 Watching · {peerCount} in class</span>
+            {handRaised
+              ? <button onClick={() => actions.lowerLocalPeerHand()} style={{ ...lightBtn, background: 'rgba(212,163,74,0.3)' }}>✋ Hand raised · lower</button>
+              : <button onClick={() => actions.raiseLocalPeerHand()} style={lightBtn}>✋ Raise hand to speak</button>}
+          </>
+        )}
         <button onClick={() => void leave()} style={ctrlBtn(false)}>Leave</button>
       </div>
     </div>
