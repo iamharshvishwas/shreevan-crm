@@ -54,14 +54,22 @@ export class HmsService {
     return data.id;
   }
 
+  /** Map our internal 'host'/'guest' to the template's actual role names. */
+  private roleName(kind: 'host' | 'guest'): string {
+    return kind === 'host'
+      ? (this.config.get<string>('HMS_HOST_ROLE') ?? 'host')
+      : (this.config.get<string>('HMS_GUEST_ROLE') ?? 'guest');
+  }
+
   /**
-   * Auth token a client uses to join `roomId` as `role` ('host' | 'guest').
-   * userId ties chat/polls/recordings to the person.
+   * Auth token a client uses to join `roomId` as `kind` ('host' | 'guest').
+   * The actual 100ms role string comes from HMS_HOST_ROLE / HMS_GUEST_ROLE so it
+   * matches whatever the template defines. userId ties chat/polls to the person.
    */
-  async authToken(roomId: string, userId: string, role: 'host' | 'guest'): Promise<string> {
+  async authToken(roomId: string, userId: string, kind: 'host' | 'guest'): Promise<string> {
     if (!this.isConfigured()) throw new ServiceUnavailableException('Video (100ms) is not configured yet.');
     return this.jwt.signAsync(
-      { access_key: this.accessKey, room_id: roomId, user_id: userId, role, type: 'app', version: 2, jti: randomUUID() },
+      { access_key: this.accessKey, room_id: roomId, user_id: userId, role: this.roleName(kind), type: 'app', version: 2, jti: randomUUID() },
       { secret: this.secret as string, algorithm: 'HS256', expiresIn: '24h', notBefore: '0s' },
     );
   }

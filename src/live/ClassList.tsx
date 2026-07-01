@@ -14,7 +14,7 @@ function StatusPill({ status }: { status: JoinableClass['status'] }) {
   );
 }
 
-export function ClassList({ store, onJoin }: { store: ParticipantStore; onJoin: (info: JoinInfo, cls: JoinableClass) => void }) {
+export function ClassList({ store, onJoin, onBack }: { store: ParticipantStore; onJoin: (info: JoinInfo, cls: JoinableClass) => void; onBack: () => void }) {
   const [classes, setClasses] = useState<JoinableClass[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [joining, setJoining] = useState<string | null>(null);
@@ -51,9 +51,10 @@ export function ClassList({ store, onJoin }: { store: ParticipantStore; onJoin: 
     <div style={{ minHeight: '100vh', background: 'var(--sw-sand-050)', fontFamily: 'var(--font-body)' }}>
       {/* top bar */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 28px', background: '#fff', borderBottom: '1px solid var(--sw-line-soft)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button onClick={onBack} title="Back" style={{ background: 'none', border: '1px solid var(--sw-line-soft)', borderRadius: 999, width: 32, height: 32, fontSize: 15, cursor: 'pointer', color: 'var(--sw-ink-900)' }}>←</button>
           <img src="/assets/shreevan-mark-on-forest.png" alt="" style={{ width: 34, height: 34, borderRadius: 9 }} />
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 16, color: 'var(--sw-ink-900)' }}>Live Classes</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 16, color: 'var(--sw-ink-900)' }}>Masterclass</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <span style={{ fontSize: 13, color: 'var(--sw-stone-600)' }}>{store.participant?.name}</span>
@@ -93,7 +94,7 @@ export function ClassList({ store, onJoin }: { store: ParticipantStore; onJoin: 
                 disabled={c.status !== 'LIVE' || joining === c.id}
                 className={c.status === 'LIVE' ? 'hov-forest-deep' : undefined}
                 style={{ flexShrink: 0, height: 38, padding: '0 20px', borderRadius: 999, border: '1px solid var(--sw-forest-900)', background: c.status === 'LIVE' ? 'var(--sw-forest-900)' : 'var(--sw-line-soft)', color: c.status === 'LIVE' ? '#fff' : 'var(--sw-stone-600)', fontFamily: 'var(--font-body)', fontSize: 13.5, fontWeight: 600, cursor: c.status === 'LIVE' ? 'pointer' : 'default', opacity: joining === c.id ? 0.6 : 1 }}>
-                {joining === c.id ? 'Joining…' : c.status === 'LIVE' ? 'Join' : 'Not started'}
+                {joining === c.id ? 'Joining…' : c.status === 'LIVE' ? 'Join now' : 'Not started'}
               </button>
             </div>
           ))}

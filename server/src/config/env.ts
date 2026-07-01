@@ -74,6 +74,11 @@ export const envSchema = z.object({
   HMS_ACCESS_KEY: z.string().optional(),   // 100ms App Access Key
   HMS_SECRET: z.string().optional(),       // 100ms App Secret (signs room/auth tokens)
   HMS_TEMPLATE_ID: z.string().optional(),  // 100ms template rooms are created from
+  // Role names MUST match the roles defined in the 100ms template. Defaults suit
+  // the "Video Conferencing" template; a "Virtual Classroom" template often uses
+  // teacher/student (or similar) — set these to match, no code change needed.
+  HMS_HOST_ROLE: z.string().default('host'),
+  HMS_GUEST_ROLE: z.string().default('guest'),
 });
 
 export type Env = z.infer<typeof envSchema>;

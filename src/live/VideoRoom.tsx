@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   useHMSActions, useHMSStore, useVideo,
   selectIsConnectedToRoom, selectPeers, selectIsLocalAudioEnabled, selectIsLocalVideoEnabled,
@@ -41,16 +41,29 @@ export function VideoRoom({ room, userName, onLeave }: { room: RoomToken; userNa
   const audioOn = useHMSStore(selectIsLocalAudioEnabled);
   const videoOn = useHMSStore(selectIsLocalVideoEnabled);
   const joinedRef = useRef(false);
+  const [error, setError] = useState<string | null>(null);
+  const [slow, setSlow] = useState(false);
 
   // Join once when we have a token; always leave on unmount.
   useEffect(() => {
     if (room.videoEnabled && room.token && !joinedRef.current) {
       joinedRef.current = true;
-      actions.join({ authToken: room.token, userName }).catch(() => { joinedRef.current = false; });
+      setError(null);
+      actions.join({ authToken: room.token, userName }).catch((e: unknown) => {
+        joinedRef.current = false;
+        setError((e as Error)?.message || 'Could not connect to the video room.');
+      });
     }
     return () => { actions.leave().catch(() => undefined); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.token]);
+
+  // If we're not connected within 15s (and no explicit error), show a hint.
+  useEffect(() => {
+    if (connected || error) { setSlow(false); return; }
+    const t = setTimeout(() => setSlow(true), 15_000);
+    return () => clearTimeout(t);
+  }, [connected, error]);
 
   async function leave() {
     await actions.leave().catch(() => undefined);
@@ -71,8 +84,24 @@ export function VideoRoom({ room, userName, onLeave }: { room: RoomToken; userNa
 
   if (!connected) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0d1f1a', borderRadius: 14, color: 'rgba(255,255,255,0.8)', fontSize: 14 }}>
-        Connecting to the class…
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, background: '#0d1f1a', borderRadius: 14, color: 'rgba(255,255,255,0.85)', textAlign: 'center', padding: 24 }}>
+        {error ? (
+          <>
+            <div style={{ fontSize: 34 }}>⚠️</div>
+            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 16, color: '#fff' }}>Couldn’t connect to the video</div>
+            <div style={{ fontSize: 12.5, maxWidth: 420, color: 'rgba(255,255,255,0.75)' }}>{error}</div>
+            <div style={{ fontSize: 11.5, maxWidth: 420, color: 'rgba(255,255,255,0.5)' }}>
+              If this mentions a role, the 100ms template’s role names don’t match — set HMS_HOST_ROLE / HMS_GUEST_ROLE. Otherwise check the keys or camera permission.
+            </div>
+            <button onClick={onLeave} style={{ marginTop: 8, ...ctrlBtn(true) }}>Leave</button>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 14 }}>Connecting to the class…</div>
+            {slow && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', maxWidth: 380 }}>Taking longer than usual — check that camera/mic permission is allowed, or try Leave and rejoin.</div>}
+            {slow && <button onClick={onLeave} style={{ marginTop: 6, ...ctrlBtn(true) }}>Leave</button>}
+          </>
+        )}
       </div>
     );
   }
