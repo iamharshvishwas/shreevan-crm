@@ -2,6 +2,8 @@
  * client). Stores its own token under sw_live_token so it never collides with
  * staff auth. */
 
+import type { ChatMessage, PollView } from './roomTypes';
+
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000/api/v1';
 const TOKEN_KEY = 'sw_live_token';
 
@@ -81,4 +83,9 @@ export const liveApi = {
   me: () => req<Participant>('GET', '/participant/auth/me'),
   joinable: () => req<JoinableClass[]>('GET', '/liveclass/joinable'),
   join: (slug: string) => req<JoinInfo>('POST', `/liveclass/${slug}/join`),
+  // in-room (learner) — classId comes from the join response
+  listMessages: (classId: string) => req<ChatMessage[]>('GET', `/liveclass/${classId}/messages`),
+  postMessage: (classId: string, body: string) => req<ChatMessage>('POST', `/liveclass/${classId}/messages`, { body }),
+  getPoll: (classId: string) => req<PollView | null>('GET', `/liveclass/${classId}/poll`),
+  vote: (classId: string, optionId: string) => req<PollView>('POST', `/liveclass/${classId}/poll/vote`, { optionId }),
 };

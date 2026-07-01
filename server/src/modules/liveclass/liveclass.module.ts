@@ -2,6 +2,10 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { LiveClassController } from './liveclass.controller';
 import { LiveClassService } from './liveclass.service';
+import { ClassRoomController } from './class-room.controller';
+import { ChatService } from './chat.service';
+import { PollService } from './poll.service';
+import { ClassMemberGuard } from './class-member.guard';
 import { HmsService } from './hms.service';
 import { ParticipantAuthController } from './participant/participant-auth.controller';
 import { ParticipantAuthService } from './participant/participant-auth.service';
@@ -15,6 +19,7 @@ import { InstructorGuard } from './instructor/instructor-auth.guard';
   imports: [JwtModule.register({})],
   controllers: [
     LiveClassController,
+    ClassRoomController,
     ParticipantAuthController,
     InstructorAuthController,
     InstructorAdminController,
@@ -22,6 +27,9 @@ import { InstructorGuard } from './instructor/instructor-auth.guard';
   providers: [
     LiveClassService,
     HmsService,
+    ChatService,
+    PollService,
+    ClassMemberGuard,
     ParticipantAuthService,
     ParticipantGuard,
     InstructorService,

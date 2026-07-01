@@ -1,21 +1,23 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { VideoRoom } from '../live/VideoRoom';
-import type { HostRoomInfo } from './teachApi';
+import { ChatPanel } from '../live/ChatPanel';
+import { PollPanel } from '../live/PollPanel';
+import type { ChatApi, PollApi } from '../live/roomTypes';
+import { teachApi, type HostRoomInfo } from './teachApi';
 
 type Tab = 'chat' | 'poll';
 
-function EmptyPanel({ icon, title, note }: { icon: string; title: string; note: string }) {
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, textAlign: 'center', color: 'var(--sw-stone-600)', padding: 24 }}>
-      <div style={{ fontSize: 30 }}>{icon}</div>
-      <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 15, color: 'var(--sw-ink-900)' }}>{title}</div>
-      <div style={{ fontSize: 12.5, maxWidth: 240 }}>{note}</div>
-    </div>
-  );
-}
-
 export function HostRoom({ info, hostName, onLeave }: { info: HostRoomInfo; hostName: string; onLeave: () => void }) {
   const [tab, setTab] = useState<Tab>('chat');
+  const chatApi: ChatApi = useMemo(() => ({
+    list: () => teachApi.listMessages(info.classId),
+    send: (b) => teachApi.postMessage(info.classId, b),
+  }), [info.classId]);
+  const pollApi: PollApi = useMemo(() => ({
+    get: () => teachApi.getPoll(info.classId),
+    create: (q, o) => teachApi.createPoll(info.classId, q, o),
+    close: () => teachApi.closePoll(info.classId),
+  }), [info.classId]);
 
   const tabBtn = (key: Tab, label: string) => (
     <button onClick={() => setTab(key)}
@@ -44,9 +46,7 @@ export function HostRoom({ info, hostName, onLeave }: { info: HostRoomInfo; host
             {tabBtn('chat', '💬 Chat')}
             {tabBtn('poll', '📊 Poll')}
           </div>
-          {tab === 'chat'
-            ? <EmptyPanel icon="💬" title="Live chat" note="Two-way chat with your class goes live in the next update — the panel is ready." />
-            : <EmptyPanel icon="📊" title="Live polls" note="You'll be able to run polls here, with live results, in the next update." />}
+          {tab === 'chat' ? <ChatPanel api={chatApi} /> : <PollPanel api={pollApi} isHost />}
         </aside>
       </div>
     </div>

@@ -1,21 +1,22 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { VideoRoom } from './VideoRoom';
-import type { JoinInfo, JoinableClass } from './liveApi';
+import { ChatPanel } from './ChatPanel';
+import { PollPanel } from './PollPanel';
+import { liveApi, type JoinInfo, type JoinableClass } from './liveApi';
+import type { ChatApi, PollApi } from './roomTypes';
 
 type Tab = 'chat' | 'poll';
 
-function EmptyPanel({ icon, title, note }: { icon: string; title: string; note: string }) {
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, textAlign: 'center', color: 'var(--sw-stone-600)', padding: 24 }}>
-      <div style={{ fontSize: 30 }}>{icon}</div>
-      <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 15, color: 'var(--sw-ink-900)' }}>{title}</div>
-      <div style={{ fontSize: 12.5, maxWidth: 240 }}>{note}</div>
-    </div>
-  );
-}
-
 export function ClassRoom({ info, cls, userName, onLeave }: { info: JoinInfo; cls: JoinableClass; userName: string; onLeave: () => void }) {
   const [tab, setTab] = useState<Tab>('chat');
+  const chatApi: ChatApi = useMemo(() => ({
+    list: () => liveApi.listMessages(info.classId),
+    send: (b) => liveApi.postMessage(info.classId, b),
+  }), [info.classId]);
+  const pollApi: PollApi = useMemo(() => ({
+    get: () => liveApi.getPoll(info.classId),
+    vote: (o) => liveApi.vote(info.classId, o),
+  }), [info.classId]);
 
   const tabBtn = (key: Tab, label: string) => (
     <button onClick={() => setTab(key)}
@@ -47,9 +48,7 @@ export function ClassRoom({ info, cls, userName, onLeave }: { info: JoinInfo; cl
             {tabBtn('chat', '💬 Chat')}
             {tabBtn('poll', '📊 Poll')}
           </div>
-          {tab === 'chat'
-            ? <EmptyPanel icon="💬" title="Live chat" note="Two-way chat with the class goes live in the next update — the panel is ready." />
-            : <EmptyPanel icon="📊" title="Live polls" note="The host will be able to run polls here, with live results, in the next update." />}
+          {tab === 'chat' ? <ChatPanel api={chatApi} /> : <PollPanel api={pollApi} isHost={false} />}
         </aside>
       </div>
     </div>

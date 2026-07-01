@@ -1,6 +1,8 @@
 /* API client for the instructor host area (/teach). Separate token from staff
  * and learners — stored under sw_teach_token. */
 
+import type { ChatMessage, PollView } from '../live/roomTypes';
+
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000/api/v1';
 const TOKEN_KEY = 'sw_teach_token';
 
@@ -63,4 +65,11 @@ export const teachApi = {
   start: (id: string) => req<HostClass>('POST', `/liveclass/${id}/start`),
   end: (id: string) => req<HostClass>('POST', `/liveclass/${id}/end`),
   hostToken: (id: string) => req<HostRoomInfo>('POST', `/liveclass/${id}/host-token`),
+  // in-room (host)
+  listMessages: (classId: string) => req<ChatMessage[]>('GET', `/liveclass/${classId}/messages`),
+  postMessage: (classId: string, body: string) => req<ChatMessage>('POST', `/liveclass/${classId}/messages`, { body }),
+  getPoll: (classId: string) => req<PollView | null>('GET', `/liveclass/${classId}/poll`),
+  createPoll: (classId: string, question: string, options: string[]) =>
+    req<PollView>('POST', `/liveclass/${classId}/poll`, { question, options }),
+  closePoll: (classId: string) => req<PollView | null>('POST', `/liveclass/${classId}/poll/close`),
 };
