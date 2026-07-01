@@ -89,4 +89,5 @@ export const liveApi = {
   postMessage: (classId: string, body: string) => req<ChatMessage>('POST', `/liveclass/${classId}/messages`, { body }),
   getPoll: (classId: string) => req<PollView | null>('GET', `/liveclass/${classId}/poll`),
   vote: (classId: string, optionId: string) => req<PollView>('POST', `/liveclass/${classId}/poll/vote`, { optionId }),
+  getStatus: (classId: string) => req<{ status: ClassStatus }>('GET', `/liveclass/${classId}/status`),
 };

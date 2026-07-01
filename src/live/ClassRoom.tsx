@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { VideoRoom } from './VideoRoom';
 import { ChatPanel } from './ChatPanel';
 import { PollPanel } from './PollPanel';
+import { ClassEndedOverlay } from './ClassEndedOverlay';
+import { useClassEnded } from './useClassEnded';
 import { liveApi, type JoinInfo, type JoinableClass } from './liveApi';
 import type { ChatApi, PollApi } from './roomTypes';
 
@@ -9,6 +11,7 @@ type Tab = 'chat' | 'poll';
 
 export function ClassRoom({ info, cls, userName, onLeave }: { info: JoinInfo; cls: JoinableClass; userName: string; onLeave: () => void }) {
   const [tab, setTab] = useState<Tab>('chat');
+  const ended = useClassEnded(info.classId, liveApi.getStatus);
   const chatApi: ChatApi = useMemo(() => ({
     list: () => liveApi.listMessages(info.classId),
     send: (b) => liveApi.postMessage(info.classId, b),
@@ -27,6 +30,8 @@ export function ClassRoom({ info, cls, userName, onLeave }: { info: JoinInfo; cl
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--sw-forest-950)', fontFamily: 'var(--font-body)' }}>
+      {ended && <ClassEndedOverlay onLeave={onLeave} />}
+
       {/* header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', color: '#fff' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { VideoRoom } from '../live/VideoRoom';
 import { ChatPanel } from '../live/ChatPanel';
 import { PollPanel } from '../live/PollPanel';
+import { ClassEndedOverlay } from '../live/ClassEndedOverlay';
+import { useClassEnded } from '../live/useClassEnded';
 import type { ChatApi, PollApi } from '../live/roomTypes';
 import { teachApi, type HostRoomInfo } from './teachApi';
 
@@ -9,6 +11,8 @@ type Tab = 'chat' | 'poll';
 
 export function HostRoom({ info, hostName, onLeave }: { info: HostRoomInfo; hostName: string; onLeave: () => void }) {
   const [tab, setTab] = useState<Tab>('chat');
+  // Covers the edge case of ending the class from another tab/session.
+  const ended = useClassEnded(info.classId, teachApi.getStatus);
   const chatApi: ChatApi = useMemo(() => ({
     list: () => teachApi.listMessages(info.classId),
     send: (b) => teachApi.postMessage(info.classId, b),
@@ -28,6 +32,8 @@ export function HostRoom({ info, hostName, onLeave }: { info: HostRoomInfo; host
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--sw-forest-950)', fontFamily: 'var(--font-body)' }}>
+      {ended && <ClassEndedOverlay onLeave={onLeave} />}
+
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', color: '#fff' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--sw-error)' }} />

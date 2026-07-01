@@ -75,6 +75,13 @@ export class LiveClassService {
     };
   }
 
+  /** Lightweight status check — lets a room poll for "the host ended this". */
+  async status(id: string): Promise<{ status: LiveClassStatus }> {
+    const cls = await this.prisma.liveClass.findUnique({ where: { id }, select: { status: true } });
+    if (!cls) throw new NotFoundException('Class not found.');
+    return { status: cls.status };
+  }
+
   // ---- Participant (public) ----
 
   /** Classes a learner can see: live now, or scheduled/upcoming. */

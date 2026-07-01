@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/auth/decorators';
 import { ChatService } from './chat.service';
 import { PollService } from './poll.service';
+import { LiveClassService } from './liveclass.service';
 import { PostMessageDto, CreatePollDto, VoteDto } from './dto/room.dto';
 import { ClassMember, ClassMemberGuard, CurrentMember } from './class-member.guard';
 import { AuthInstructor, CurrentInstructor, InstructorGuard } from './instructor/instructor-auth.guard';
@@ -16,7 +17,17 @@ export class ClassRoomController {
   constructor(
     private readonly chat: ChatService,
     private readonly polls: PollService,
+    private readonly classes: LiveClassService,
   ) {}
+
+  /** Lets a room poll for "has the host ended this class?" — shown as a popup. */
+  @Public()
+  @ApiBearerAuth()
+  @UseGuards(ClassMemberGuard)
+  @Get('status')
+  status(@Param('id') id: string) {
+    return this.classes.status(id);
+  }
 
   // ---- Chat (both roles) ----
 

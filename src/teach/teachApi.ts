@@ -74,4 +74,5 @@ export const teachApi = {
   createPoll: (classId: string, question: string, options: string[]) =>
     req<PollView>('POST', `/liveclass/${classId}/poll`, { question, options }),
   closePoll: (classId: string) => req<PollView | null>('POST', `/liveclass/${classId}/poll/close`),
+  getStatus: (classId: string) => req<{ status: ClassStatus }>('GET', `/liveclass/${classId}/status`),
 };
