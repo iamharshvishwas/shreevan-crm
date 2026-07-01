@@ -19,6 +19,7 @@ export function InstructorClasses({ store, onEnterRoom }: { store: InstructorSto
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [mode, setMode] = useState<ClassMode>('WEBINAR');
+  const [requireApproval, setRequireApproval] = useState(false);
   const [creating, setCreating] = useState(false);
 
   async function load() {
@@ -39,8 +40,8 @@ export function InstructorClasses({ store, onEnterRoom }: { store: InstructorSto
     if (title.trim().length < 2) { setError('Give the class a title.'); return; }
     setCreating(true); setError(null);
     try {
-      await teachApi.create(title.trim(), description.trim() || undefined, mode);
-      setTitle(''); setDescription('');
+      await teachApi.create(title.trim(), description.trim() || undefined, mode, requireApproval);
+      setTitle(''); setDescription(''); setRequireApproval(false);
       await load();
     } catch (e) { setError(e instanceof TeachApiError ? e.message : 'Could not create the class.'); }
     finally { setCreating(false); }
@@ -98,6 +99,10 @@ export function InstructorClasses({ store, onEnterRoom }: { store: InstructorSto
                 ))}
               </div>
             </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12.5, color: 'var(--sw-ink-900)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={requireApproval} onChange={(e) => setRequireApproval(e.target.checked)} style={{ width: 15, height: 15, accentColor: '#173d32' }} />
+              🚪 Waiting room — students need my approval to join
+            </label>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               {btn(creating ? 'Creating…' : 'Create class', () => void create(), 'primary', creating)}
             </div>
@@ -117,6 +122,7 @@ export function InstructorClasses({ store, onEnterRoom }: { store: InstructorSto
                   <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 16, color: 'var(--sw-ink-900)' }}>{c.title}</span>
                   <StatusPill status={c.status} />
                   <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--sw-stone-600)', border: '1px solid var(--sw-line-soft)', borderRadius: 999, padding: '2px 8px' }}>{c.mode === 'MEETING' ? '👥 Meeting' : '📢 Webinar'}</span>
+                  {c.requireApproval && <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--sw-stone-600)', border: '1px solid var(--sw-line-soft)', borderRadius: 999, padding: '2px 8px' }}>🚪 Approval</span>}
                 </div>
                 {c.description && <div style={{ fontSize: 13, color: 'var(--sw-stone-600)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.description}</div>}
               </div>

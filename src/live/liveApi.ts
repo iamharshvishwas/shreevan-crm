@@ -77,6 +77,15 @@ export interface JoinInfo {
   token: string | null;
   roles: Roles;
 }
+/** Approval-gated class: the student is in the waiting room (client polls join). */
+export interface WaitingInfo {
+  waiting: true;
+  status: 'PENDING' | 'DENIED';
+  classId: string;
+  title: string;
+}
+export type JoinResult = JoinInfo | WaitingInfo;
+export const isWaiting = (r: JoinResult): r is WaitingInfo => (r as WaitingInfo).waiting === true;
 
 export const liveApi = {
   signup: (email: string, name: string, password: string) =>
@@ -85,7 +94,7 @@ export const liveApi = {
     req<ParticipantSession>('POST', '/participant/auth/login', { email, password }),
   me: () => req<Participant>('GET', '/participant/auth/me'),
   joinable: () => req<JoinableClass[]>('GET', '/liveclass/joinable'),
-  join: (slug: string) => req<JoinInfo>('POST', `/liveclass/${slug}/join`),
+  join: (slug: string) => req<JoinResult>('POST', `/liveclass/${slug}/join`),
   // in-room (learner) — classId comes from the join response
   listMessages: (classId: string) => req<ChatMessage[]>('GET', `/liveclass/${classId}/messages`),
   postMessage: (classId: string, body: string) => req<ChatMessage>('POST', `/liveclass/${classId}/messages`, { body }),

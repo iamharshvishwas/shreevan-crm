@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { VideoRoom } from '../live/VideoRoom';
 import { ChatPanel } from '../live/ChatPanel';
 import { PollPanel } from '../live/PollPanel';
@@ -7,7 +7,7 @@ import { ClassEndedOverlay } from '../live/ClassEndedOverlay';
 import { useClassEnded } from '../live/useClassEnded';
 import { useIsNarrow } from '../live/useIsNarrow';
 import type { ChatApi, PollApi } from '../live/roomTypes';
-import { teachApi, TeachApiError, type HostRoomInfo } from './teachApi';
+import { teachApi, TeachApiError, type HostRoomInfo, type JoinRequest } from './teachApi';
 
 type Tab = 'chat' | 'poll' | 'people';
 
@@ -18,6 +18,26 @@ export function HostRoom({ info, hostName, onLeave }: { info: HostRoomInfo; host
   const narrow = useIsNarrow();
   // Covers the edge case of ending the class from another tab/session.
   const ended = useClassEnded(info.classId, teachApi.getStatus);
+  const [pending, setPending] = useState<JoinRequest[]>([]);
+
+  // Waiting room: poll pending join requests while hosting an approval class.
+  useEffect(() => {
+    if (!info.requireApproval) return;
+    let live = true;
+    const tick = async () => {
+      try { const rows = await teachApi.joinRequests(info.classId); if (live) setPending(rows); }
+      catch { /* transient — next poll recovers */ }
+    };
+    void tick();
+    const t = setInterval(tick, 4000);
+    return () => { live = false; clearInterval(t); };
+  }, [info.classId, info.requireApproval]);
+
+  async function decide(reqId: string, approve: boolean) {
+    setPending((p) => p.filter((r) => r.id !== reqId)); // optimistic
+    try { await (approve ? teachApi.approveJoin(info.classId, reqId) : teachApi.denyJoin(info.classId, reqId)); }
+    catch { /* next poll restores if it failed */ }
+  }
 
   /** End the class for everyone — confirmation guards against an accidental click. */
   async function endClass() {
@@ -70,6 +90,21 @@ export function HostRoom({ info, hostName, onLeave }: { info: HostRoomInfo; host
           </button>
         </div>
       </div>
+
+      {pending.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '0 14px 10px', background: 'rgba(212,163,74,0.15)', border: '1px solid rgba(212,163,74,0.4)', borderRadius: 10, padding: '8px 12px' }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#f0d9a8' }}>🚪 {pending.length} waiting to join:</span>
+          {pending.slice(0, 6).map((r) => (
+            <span key={r.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(0,0,0,0.25)', borderRadius: 999, padding: '3px 5px 3px 12px' }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: '#fff' }}>{r.name}</span>
+              <button onClick={() => void decide(r.id, true)}
+                style={{ height: 24, padding: '0 10px', borderRadius: 999, border: 'none', background: 'var(--sw-moss-600)', color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>✓ Admit</button>
+              <button onClick={() => void decide(r.id, false)}
+                style={{ height: 24, padding: '0 10px', borderRadius: 999, border: 'none', background: '#b5443a', color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>✕</button>
+            </span>
+          ))}
+        </div>
+      )}
 
       <div style={{ flex: 1, display: 'flex', flexDirection: narrow ? 'column' : 'row', gap: 14, padding: '0 14px 14px', minHeight: 0 }}>
         <VideoRoom room={{ videoEnabled: info.videoEnabled, token: info.token }} roles={info.roles} userName={hostName} onLeave={onLeave} />

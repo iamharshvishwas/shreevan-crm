@@ -12,6 +12,9 @@ export interface InstructorSession {
 
 const publicShape = { id: true, email: true, name: true, isActive: true, createdAt: true } as const;
 
+const MAX_LOGIN_ATTEMPTS = 5;   // consecutive failures before lockout
+const LOCKOUT_MS = 15 * 60_000; // 15-minute lockout
+
 @Injectable()
 export class InstructorService {
   constructor(
@@ -24,9 +27,32 @@ export class InstructorService {
 
   async login(email: string, password: string): Promise<InstructorSession> {
     const i = await this.prisma.instructor.findUnique({ where: { email: email.trim().toLowerCase() } });
+
+    // Lockout: after too many consecutive failures, refuse for a cooldown window.
+    if (i?.lockedUntil && i.lockedUntil > new Date()) {
+      throw new UnauthorizedException('Too many failed attempts — try again in about 15 minutes.');
+    }
+
     const ok = i ? await argon2.verify(i.passwordHash, password).catch(() => false) : false;
-    if (!i || !ok) throw new UnauthorizedException('Incorrect email or password.');
+    if (!i || !ok) {
+      if (i) {
+        const attempts = i.failedLoginAttempts + 1;
+        await this.prisma.instructor.update({
+          where: { id: i.id },
+          data: {
+            failedLoginAttempts: attempts,
+            lockedUntil: attempts >= MAX_LOGIN_ATTEMPTS ? new Date(Date.now() + LOCKOUT_MS) : null,
+          },
+        });
+      }
+      throw new UnauthorizedException('Incorrect email or password.');
+    }
     if (!i.isActive) throw new UnauthorizedException('This instructor account is disabled.');
+
+    if (i.failedLoginAttempts > 0 || i.lockedUntil) {
+      await this.prisma.instructor.update({ where: { id: i.id }, data: { failedLoginAttempts: 0, lockedUntil: null } });
+    }
+
     const token = await this.jwt.signAsync(
       { sub: i.id, email: i.email, name: i.name, typ: 'instructor' },
       { secret: instructorSecret(this.config), expiresIn: '7d' },

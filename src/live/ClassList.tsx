@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { liveApi, LiveApiError, type JoinableClass, type JoinInfo } from './liveApi';
+import { liveApi, LiveApiError, type JoinableClass, type JoinResult } from './liveApi';
 import type { ParticipantStore } from './useParticipant';
 
 const card = { background: '#fff', border: '1px solid var(--sw-line-soft)', borderRadius: 'var(--radius-card)', padding: '18px 20px' } as const;
@@ -14,7 +14,7 @@ function StatusPill({ status }: { status: JoinableClass['status'] }) {
   );
 }
 
-export function ClassList({ store, onJoin, onBack }: { store: ParticipantStore; onJoin: (info: JoinInfo, cls: JoinableClass) => void; onBack: () => void }) {
+export function ClassList({ store, onJoin, onBack }: { store: ParticipantStore; onJoin: (result: JoinResult, cls: JoinableClass) => void; onBack: () => void }) {
   const [classes, setClasses] = useState<JoinableClass[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [joining, setJoining] = useState<string | null>(null);
@@ -38,8 +38,8 @@ export function ClassList({ store, onJoin, onBack }: { store: ParticipantStore; 
     setJoining(cls.id);
     setError(null);
     try {
-      const info = await liveApi.join(cls.slug);
-      onJoin(info, cls);
+      const result = await liveApi.join(cls.slug);
+      onJoin(result, cls);
     } catch (e) {
       setError(e instanceof LiveApiError ? e.message : 'Could not join the class.');
     } finally {

@@ -913,8 +913,9 @@ model Participant {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  messages ClassMessage[]
-  votes    PollVote[]
+  messages     ClassMessage[]
+  votes        PollVote[]
+  joinRequests ClassJoinRequest[]
 
   @@index([email])
 }
@@ -927,6 +928,8 @@ model Instructor {
   passwordHash String
   name         String
   isActive     Boolean  @default(true)
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -942,6 +945,7 @@ model LiveClass {
   description String?
   status      LiveClassStatus @default(SCHEDULED)
   mode        LiveClassMode   @default(WEBINAR)
+  requireApproval Boolean     @default(false) // waiting room: host admits each student
   hmsRoomId   String?         // 100ms room id (created on first start)
   hostId      String
   host        Instructor      @relation("ClassHost", fields: [hostId], references: [id])
@@ -951,8 +955,10 @@ model LiveClass {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
-  messages ClassMessage[]
-  polls    Poll[]
+  messages     ClassMessage[]
+  polls        Poll[]
+  joinRequests ClassJoinRequest[]
+  activities   ClassActivity[]
 
   @@index([status])
   @@index([hostId])
@@ -998,6 +1004,40 @@ model PollOption {
   votes PollVote[]
 
   @@index([pollId])
+}
+
+enum JoinRequestStatus {
+  PENDING
+  APPROVED
+  DENIED
+}
+
+// Waiting-room request: one per participant per approval-gated class.
+model ClassJoinRequest {
+  id            String            @id @default(uuid())
+  classId       String
+  liveClass     LiveClass         @relation(fields: [classId], references: [id], onDelete: Cascade)
+  participantId String
+  participant   Participant       @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  status        JoinRequestStatus @default(PENDING)
+  createdAt     DateTime          @default(now())
+  decidedAt     DateTime?
+
+  @@unique([classId, participantId])
+  @@index([classId, status])
+}
+
+// Debug/audit trail of what happened in a class (start/end/joins/approvals).
+model ClassActivity {
+  id        String    @id @default(uuid())
+  classId   String
+  liveClass LiveClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  type      String    // STARTED | ENDED | JOINED | JOIN_REQUESTED | JOIN_APPROVED | JOIN_DENIED
+  actorName String
+  detail    String?
+  createdAt DateTime  @default(now())
+
+  @@index([classId, createdAt])
 }
 
 // One vote per participant per poll (enforced by the unique pair).

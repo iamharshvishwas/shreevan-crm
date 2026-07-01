@@ -45,6 +45,7 @@ export interface HostClass {
   description: string | null;
   status: ClassStatus;
   mode: ClassMode;
+  requireApproval: boolean;
   scheduledAt: string | null;
   startedAt: string | null;
   endedAt: string | null;
@@ -57,13 +58,20 @@ export interface HostRoomInfo {
   roomId: string | null;
   token: string | null;
   roles: Roles;
+  requireApproval: boolean;
+}
+export interface JoinRequest {
+  id: string;
+  name: string;
+  requestedAt: string;
 }
 
 export const teachApi = {
   login: (email: string, password: string) => req<InstructorSession>('POST', '/instructor/auth/login', { email, password }),
   me: () => req<Instructor>('GET', '/instructor/auth/me'),
   myClasses: () => req<HostClass[]>('GET', '/liveclass/host'),
-  create: (title: string, description: string | undefined, mode: ClassMode) => req<HostClass>('POST', '/liveclass', { title, description, mode }),
+  create: (title: string, description: string | undefined, mode: ClassMode, requireApproval: boolean) =>
+    req<HostClass>('POST', '/liveclass', { title, description, mode, requireApproval }),
   start: (id: string) => req<HostClass>('POST', `/liveclass/${id}/start`),
   end: (id: string) => req<HostClass>('POST', `/liveclass/${id}/end`),
   hostToken: (id: string) => req<HostRoomInfo>('POST', `/liveclass/${id}/host-token`),
@@ -75,4 +83,8 @@ export const teachApi = {
     req<PollView>('POST', `/liveclass/${classId}/poll`, { question, options }),
   closePoll: (classId: string) => req<PollView | null>('POST', `/liveclass/${classId}/poll/close`),
   getStatus: (classId: string) => req<{ status: ClassStatus }>('GET', `/liveclass/${classId}/status`),
+  // waiting room (host)
+  joinRequests: (classId: string) => req<JoinRequest[]>('GET', `/liveclass/${classId}/join-requests`),
+  approveJoin: (classId: string, reqId: string) => req<{ ok: true }>('POST', `/liveclass/${classId}/join-requests/${reqId}/approve`),
+  denyJoin: (classId: string, reqId: string) => req<{ ok: true }>('POST', `/liveclass/${classId}/join-requests/${reqId}/deny`),
 };

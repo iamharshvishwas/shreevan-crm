@@ -53,6 +53,40 @@ export class LiveClassController {
     return this.classes.hostToken(id, host);
   }
 
+  // ---- Waiting room + activity (host) ----
+
+  @Public()
+  @ApiBearerAuth()
+  @UseGuards(InstructorGuard)
+  @Get(':id/join-requests')
+  joinRequests(@Param('id') id: string, @CurrentInstructor() host: AuthInstructor) {
+    return this.classes.listJoinRequests(id, host);
+  }
+
+  @Public()
+  @ApiBearerAuth()
+  @UseGuards(InstructorGuard)
+  @Post(':id/join-requests/:reqId/approve')
+  approveJoin(@Param('id') id: string, @Param('reqId') reqId: string, @CurrentInstructor() host: AuthInstructor) {
+    return this.classes.decideJoinRequest(id, reqId, host, true);
+  }
+
+  @Public()
+  @ApiBearerAuth()
+  @UseGuards(InstructorGuard)
+  @Post(':id/join-requests/:reqId/deny')
+  denyJoin(@Param('id') id: string, @Param('reqId') reqId: string, @CurrentInstructor() host: AuthInstructor) {
+    return this.classes.decideJoinRequest(id, reqId, host, false);
+  }
+
+  @Public()
+  @ApiBearerAuth()
+  @UseGuards(InstructorGuard)
+  @Get(':id/activity')
+  activity(@Param('id') id: string, @CurrentInstructor() host: AuthInstructor) {
+    return this.classes.activity(id, host);
+  }
+
   // ---- Participant (participant token) ----
 
   @Public()
