@@ -2,13 +2,14 @@ import { useMemo, useState } from 'react';
 import { VideoRoom } from '../live/VideoRoom';
 import { ChatPanel } from '../live/ChatPanel';
 import { PollPanel } from '../live/PollPanel';
+import { PeoplePanel } from '../live/PeoplePanel';
 import { ClassEndedOverlay } from '../live/ClassEndedOverlay';
 import { useClassEnded } from '../live/useClassEnded';
 import { useIsNarrow } from '../live/useIsNarrow';
 import type { ChatApi, PollApi } from '../live/roomTypes';
 import { teachApi, TeachApiError, type HostRoomInfo } from './teachApi';
 
-type Tab = 'chat' | 'poll';
+type Tab = 'chat' | 'poll' | 'people';
 
 export function HostRoom({ info, hostName, onLeave }: { info: HostRoomInfo; hostName: string; onLeave: () => void }) {
   const [tab, setTab] = useState<Tab>('chat');
@@ -76,8 +77,9 @@ export function HostRoom({ info, hostName, onLeave }: { info: HostRoomInfo; host
           <div style={{ display: 'flex', borderBottom: '1px solid var(--sw-line-soft)' }}>
             {tabBtn('chat', '💬 Chat')}
             {tabBtn('poll', '📊 Poll')}
+            {tabBtn('people', '👥 People')}
           </div>
-          {tab === 'chat' ? <ChatPanel api={chatApi} /> : <PollPanel api={pollApi} isHost />}
+          {tab === 'chat' ? <ChatPanel api={chatApi} /> : tab === 'poll' ? <PollPanel api={pollApi} isHost /> : <PeoplePanel roles={info.roles} isHost />}
         </aside>
       </div>
     </div>

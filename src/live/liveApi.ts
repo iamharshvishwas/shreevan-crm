@@ -2,7 +2,7 @@
  * client). Stores its own token under sw_live_token so it never collides with
  * staff auth. */
 
-import type { ChatMessage, PollView, Roles } from './roomTypes';
+import type { ChatMessage, ClassMode, PollView, Roles } from './roomTypes';
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000/api/v1';
 const TOKEN_KEY = 'sw_live_token';
@@ -63,12 +63,14 @@ export interface JoinableClass {
   slug: string;
   description: string | null;
   status: ClassStatus;
+  mode: ClassMode;
   scheduledAt: string | null;
   startedAt: string | null;
 }
 export interface JoinInfo {
   classId: string;
   title: string;
+  mode: ClassMode;
   role: 'guest';
   videoEnabled: boolean;
   roomId: string | null;

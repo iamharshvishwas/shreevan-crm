@@ -2,13 +2,14 @@ import { useMemo, useState } from 'react';
 import { VideoRoom } from './VideoRoom';
 import { ChatPanel } from './ChatPanel';
 import { PollPanel } from './PollPanel';
+import { PeoplePanel } from './PeoplePanel';
 import { ClassEndedOverlay } from './ClassEndedOverlay';
 import { useClassEnded } from './useClassEnded';
 import { useIsNarrow } from './useIsNarrow';
 import { liveApi, type JoinInfo, type JoinableClass } from './liveApi';
 import type { ChatApi, PollApi } from './roomTypes';
 
-type Tab = 'chat' | 'poll';
+type Tab = 'chat' | 'poll' | 'people';
 
 export function ClassRoom({ info, cls, userName, onLeave }: { info: JoinInfo; cls: JoinableClass; userName: string; onLeave: () => void }) {
   const [tab, setTab] = useState<Tab>('chat');
@@ -54,8 +55,9 @@ export function ClassRoom({ info, cls, userName, onLeave }: { info: JoinInfo; cl
           <div style={{ display: 'flex', borderBottom: '1px solid var(--sw-line-soft)' }}>
             {tabBtn('chat', '💬 Chat')}
             {tabBtn('poll', '📊 Poll')}
+            {tabBtn('people', '👥 People')}
           </div>
-          {tab === 'chat' ? <ChatPanel api={chatApi} /> : <PollPanel api={pollApi} isHost={false} />}
+          {tab === 'chat' ? <ChatPanel api={chatApi} /> : tab === 'poll' ? <PollPanel api={pollApi} isHost={false} /> : <PeoplePanel roles={info.roles} isHost={false} />}
         </aside>
       </div>
     </div>

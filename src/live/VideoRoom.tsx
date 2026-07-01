@@ -3,7 +3,7 @@ import {
   useHMSActions, useHMSStore, useVideo, useScreenShare,
   selectIsConnectedToRoom, selectPeers, selectPeerCount, selectDominantSpeaker,
   selectLocalPeer, selectLocalPeerRoleName, selectIsLocalAudioEnabled, selectIsLocalVideoEnabled,
-  selectPeerScreenSharing, selectScreenShareByPeerID,
+  selectPeerScreenSharing, selectScreenShareByPeerID, selectRoomState, selectConnectionQualityByPeerID,
 } from '@100mslive/react-sdk';
 import type { Roles } from './roomTypes';
 
@@ -46,6 +46,20 @@ function ScreenTile({ trackId, label }: { trackId: string; label?: string }) {
   );
 }
 
+/** 5-bar network quality indicator for the local peer. 100ms reports either a
+ *  0-5 score or 0-100 depending on version — normalize to 0-5; -1 = unknown. */
+function NetworkBars({ quality }: { quality: number | undefined }) {
+  const q = quality == null || quality < 0 ? -1 : quality > 5 ? Math.round(quality / 20) : Math.round(quality);
+  const color = q < 0 ? 'rgba(255,255,255,0.35)' : q >= 4 ? 'var(--sw-moss-600)' : q >= 2 ? '#d4a34a' : '#b5443a';
+  return (
+    <span title={q < 0 ? 'Network: checking…' : `Network: ${q}/5`} style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 2, height: 14 }}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <span key={i} style={{ width: 3, height: 2 + i * 2.4, borderRadius: 1, background: q >= i ? color : 'rgba(255,255,255,0.25)' }} />
+      ))}
+    </span>
+  );
+}
+
 /** Auto-dismissing "so-and-so left" toasts — top-center over the video area. */
 function NoticeStack({ notices }: { notices: Notice[] }) {
   if (!notices.length) return null;
@@ -83,6 +97,8 @@ export function VideoRoom({ room, roles, userName, onLeave }: { room: RoomToken;
   const screenPeer = useHMSStore(selectPeerScreenSharing) as Peer | undefined;
   const screenTrack = useHMSStore(selectScreenShareByPeerID(screenPeer?.id ?? '')) as { id?: string } | undefined;
   const screenTrackId = screenTrack?.id;
+  const roomState = useHMSStore(selectRoomState) as string;
+  const netQuality = useHMSStore(selectConnectionQualityByPeerID(localPeer?.id ?? '')) as { downlinkQuality: number } | undefined;
   const joinedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [slow, setSlow] = useState(false);
@@ -262,6 +278,12 @@ export function VideoRoom({ room, roles, userName, onLeave }: { room: RoomToken;
     <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
       <NoticeStack notices={notices} />
 
+      {(roomState === 'Reconnecting' || roomState === 'Failed') && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'rgba(212,163,74,0.2)', border: '1px solid rgba(212,163,74,0.5)', borderRadius: 10, padding: '8px 12px', color: '#f0d9a8', fontSize: 12.5, fontWeight: 700 }}>
+          {roomState === 'Reconnecting' ? '⚠️ Connection lost — reconnecting…' : '⚠️ Connection failed — try Leave and rejoin.'}
+        </div>
+      )}
+
       {canPublish && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.75)' }}>
           <span>🟢 {panelistCount} panelist{panelistCount === 1 ? '' : 's'} on stage</span>
@@ -296,10 +318,12 @@ export function VideoRoom({ room, roles, userName, onLeave }: { room: RoomToken;
             )}
             {isHost && <span style={{ fontSize: 12, color: '#f0d9a8', fontWeight: 700 }}>★ Host</span>}
             {onStage && <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>You’re on stage</span>}
+            <NetworkBars quality={netQuality?.downlinkQuality} />
           </>
         ) : (
           <>
             <span style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.7)' }}>👁 Watching · {peerCount} in class</span>
+            <NetworkBars quality={netQuality?.downlinkQuality} />
             {handRaised
               ? <button onClick={() => actions.lowerLocalPeerHand()} style={{ ...lightBtn, background: 'rgba(212,163,74,0.3)' }}>✋ Hand raised · lower</button>
               : <button onClick={() => actions.raiseLocalPeerHand()} style={lightBtn}>✋ Raise hand to speak</button>}
