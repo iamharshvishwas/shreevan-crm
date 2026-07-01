@@ -13,7 +13,10 @@ export interface RoomToken { videoEnabled: boolean; token: string | null }
 /** Minimal shape we use from an HMS peer (structurally a subset of HMSPeer). */
 interface Peer { id: string; name: string; isLocal: boolean; roleName?: string; videoTrack?: string; isHandRaised: boolean }
 
+interface Notice { id: string; text: string }
+
 const TILES_PER_PAGE = 9;
+const NOTICE_TTL_MS = 5000;
 
 function Tile({ peer, highlight, big }: { peer: Peer; highlight?: boolean; big?: boolean }) {
   const { videoRef } = useVideo({ trackId: peer.videoTrack });
@@ -39,6 +42,18 @@ function ScreenTile({ trackId, label }: { trackId: string; label?: string }) {
     <div style={{ position: 'relative', background: '#000', borderRadius: 12, overflow: 'hidden', height: '100%', width: '100%' }}>
       <video ref={videoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
       {label && <div style={{ position: 'absolute', left: 8, top: 8, fontSize: 11.5, fontWeight: 600, color: '#fff', background: 'rgba(0,0,0,0.5)', borderRadius: 6, padding: '2px 8px' }}>🖥 {label}</div>}
+    </div>
+  );
+}
+
+/** Auto-dismissing "so-and-so left" toasts — top-center over the video area. */
+function NoticeStack({ notices }: { notices: Notice[] }) {
+  if (!notices.length) return null;
+  return (
+    <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', zIndex: 500, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center', pointerEvents: 'none' }}>
+      {notices.map((n) => (
+        <div key={n.id} style={{ fontSize: 12.5, fontWeight: 600, color: '#fff', background: 'rgba(0,0,0,0.65)', borderRadius: 999, padding: '6px 14px', whiteSpace: 'nowrap' }}>{n.text}</div>
+      ))}
     </div>
   );
 }
@@ -72,6 +87,7 @@ export function VideoRoom({ room, roles, userName, onLeave }: { room: RoomToken;
   const [error, setError] = useState<string | null>(null);
   const [slow, setSlow] = useState(false);
   const [page, setPage] = useState(0);
+  const [notices, setNotices] = useState<Notice[]>([]);
 
   useEffect(() => {
     if (room.videoEnabled && room.token && !joinedRef.current) {
@@ -91,6 +107,34 @@ export function VideoRoom({ room, roles, userName, onLeave }: { room: RoomToken;
     const t = setTimeout(() => setSlow(true), 15_000);
     return () => clearTimeout(t);
   }, [connected, error]);
+
+  function pushNotice(text: string) {
+    const id = `${Date.now()}-${Math.random()}`;
+    setNotices((n) => [...n, { id, text }]);
+    setTimeout(() => setNotices((n) => n.filter((x) => x.id !== id)), NOTICE_TTL_MS);
+  }
+
+  // Detect who left (host or a publishing panelist) by diffing the peer list
+  // between renders — the HMS store already updates in realtime, we just
+  // react to a peer disappearing. Viewers leaving are intentionally silent
+  // (would be noisy at scale); only host/stage departures are announced.
+  const isHostNow = myRole === roles.host;
+  const stageIdsKey = peers.filter((p) => p.roleName === roles.host || p.roleName === roles.stage).map((p) => p.id).sort().join(',');
+  const prevStageRef = useRef<Map<string, Peer>>(new Map());
+  useEffect(() => {
+    const prev = prevStageRef.current;
+    const current = new Map(peers.filter((p) => p.roleName === roles.host || p.roleName === roles.stage).map((p) => [p.id, p]));
+    for (const [id, p] of prev) {
+      if (current.has(id)) continue;
+      if (p.roleName === roles.host) {
+        pushNotice(`🚪 Host (${p.name}) has left the class`);
+      } else if (isHostNow) {
+        pushNotice(`👋 ${p.name} has left the stage`);
+      }
+    }
+    prevStageRef.current = current;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stageIdsKey]);
 
   async function leave() { await actions.leave().catch(() => undefined); onLeave(); }
 
@@ -130,6 +174,7 @@ export function VideoRoom({ room, roles, userName, onLeave }: { room: RoomToken;
   const onStage = myRole === roles.stage;
   const canPublish = isHost || onStage;
   const stagePeers = peers.filter((p) => p.roleName === roles.host || p.roleName === roles.stage);
+  const panelistCount = stagePeers.length; // hosts + on-stage panelists (publishers)
   const raisedHands = peers.filter((p) => p.roleName === roles.viewer && p.isHandRaised);
   const handRaised = !!localPeer?.isHandRaised;
 
@@ -142,6 +187,29 @@ export function VideoRoom({ room, roles, userName, onLeave }: { room: RoomToken;
   const spotlight = (dominant && stagePeers.find((p) => p.id === dominant.id))
     ?? stagePeers.find((p) => p.roleName === roles.host)
     ?? stagePeers[0];
+
+  function tileControls(p: Peer) {
+    if (!isHost || p.isLocal) return null;
+    if (p.roleName === roles.host) {
+      // A promoted co-host — host can demote them back to a regular panelist.
+      return (
+        <button onClick={() => actions.changeRoleOfPeer(p.id, roles.stage, true).catch(() => undefined)} title="Remove co-host"
+          style={{ position: 'absolute', top: 6, right: 6, fontSize: 10.5, fontWeight: 700, borderRadius: 999, border: 'none', background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '3px 8px', cursor: 'pointer' }}>
+          ★ Co-host ✕
+        </button>
+      );
+    }
+    return (
+      <div style={{ position: 'absolute', top: 6, right: 6, display: 'flex', gap: 5 }}>
+        <button onClick={() => actions.changeRoleOfPeer(p.id, roles.host, true).catch(() => undefined)} title="Make co-host"
+          style={{ fontSize: 10.5, fontWeight: 700, borderRadius: 999, border: 'none', background: 'rgba(0,0,0,0.6)', color: '#f0d9a8', padding: '3px 8px', cursor: 'pointer' }}>
+          ★ Co-host
+        </button>
+        <button onClick={() => actions.changeRoleOfPeer(p.id, roles.viewer, true).catch(() => undefined)} title="Remove from stage"
+          style={{ width: 22, height: 22, borderRadius: 999, border: 'none', background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 13, cursor: 'pointer' }}>×</button>
+      </div>
+    );
+  }
 
   let mainArea;
   if (screenTrackId) {
@@ -160,26 +228,23 @@ export function VideoRoom({ room, roles, userName, onLeave }: { room: RoomToken;
     );
   } else if (canPublish) {
     mainArea = (
-      <>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 }}>
         <div style={{ flex: 1, display: 'grid', gap: 10, gridTemplateColumns: `repeat(${cols}, 1fr)`, alignContent: 'start', minHeight: 0 }}>
           {shown.map((p) => (
             <div key={p.id} style={{ position: 'relative' }}>
               <Tile peer={p} highlight={dominant?.id === p.id} />
-              {isHost && !p.isLocal && p.roleName === roles.stage && (
-                <button onClick={() => actions.changeRoleOfPeer(p.id, roles.viewer, true).catch(() => undefined)} title="Remove from stage"
-                  style={{ position: 'absolute', top: 6, right: 6, width: 24, height: 24, borderRadius: 999, border: 'none', background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 13, cursor: 'pointer' }}>×</button>
-              )}
+              {tileControls(p)}
             </div>
           ))}
         </div>
         {pages > 1 && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, color: '#fff', fontSize: 12.5 }}>
             <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={pageSafe === 0} style={{ ...lightBtn, height: 30, opacity: pageSafe === 0 ? 0.5 : 1 }}>‹</button>
-            <span>{pageSafe + 1} / {pages} · {peerCount} in class</span>
+            <span>Page {pageSafe + 1} / {pages}</span>
             <button onClick={() => setPage((p) => Math.min(pages - 1, p + 1))} disabled={pageSafe >= pages - 1} style={{ ...lightBtn, height: 30, opacity: pageSafe >= pages - 1 ? 0.5 : 1 }}>›</button>
           </div>
         )}
-      </>
+      </div>
     );
   } else {
     mainArea = spotlight
@@ -188,7 +253,17 @@ export function VideoRoom({ room, roles, userName, onLeave }: { room: RoomToken;
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+    <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+      <NoticeStack notices={notices} />
+
+      {canPublish && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.75)' }}>
+          <span>🟢 {panelistCount} panelist{panelistCount === 1 ? '' : 's'} on stage</span>
+          <span style={{ color: 'rgba(255,255,255,0.35)' }}>·</span>
+          <span>{peerCount} total in class</span>
+        </div>
+      )}
+
       {isHost && raisedHands.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: 'rgba(212,163,74,0.15)', border: '1px solid rgba(212,163,74,0.4)', borderRadius: 10, padding: '8px 12px' }}>
           <span style={{ fontSize: 12.5, fontWeight: 700, color: '#f0d9a8' }}>✋ {raisedHands.length} raised hand{raisedHands.length > 1 ? 's' : ''}:</span>
@@ -213,6 +288,7 @@ export function VideoRoom({ room, roles, userName, onLeave }: { room: RoomToken;
                 {amIScreenSharing ? '🖥 Stop share' : '🖥 Share screen'}
               </button>
             )}
+            {isHost && <span style={{ fontSize: 12, color: '#f0d9a8', fontWeight: 700 }}>★ Host</span>}
             {onStage && <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>You’re on stage</span>}
           </>
         ) : (
