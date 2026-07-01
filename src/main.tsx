@@ -4,13 +4,17 @@ import { App } from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles/app.css';
 
-// Three experiences in one build, chosen from the URL (SPA rewrites send every
-// path to index.html): the staff CRM (default), the public participant Live
-// Classes area at /live, and the instructor host area at /teach. The video
-// areas (and the heavy 100ms SDK) are lazy-loaded so the CRM bundle stays light.
+// Three experiences in one build, chosen from host + path (SPA rewrites send
+// every path to index.html): the staff CRM (default), the public student area,
+// and the instructor host area. Students get a clean branded subdomain
+// (class.shreevanwellness.com → student area, no /live needed); the /live and
+// /teach paths also work on any host as a fallback. The video areas (and the
+// heavy 100ms SDK) are lazy-loaded so the CRM bundle stays light.
+const host = window.location.hostname;
 const path = window.location.pathname;
-const isLive = path.startsWith('/live');
-const isTeach = path.startsWith('/teach');
+const isStudentHost = host.startsWith('class.') || host.startsWith('learn.') || host.startsWith('live.') || host.startsWith('classes.');
+const isLive = isStudentHost || path.startsWith('/live');
+const isTeach = !isStudentHost && (host.startsWith('teach.') || path.startsWith('/teach'));
 const LiveRoot = lazy(() => import('./live/LiveRoot'));
 const TeachRoot = lazy(() => import('./teach/TeachRoot'));
 
