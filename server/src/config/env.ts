@@ -77,8 +77,9 @@ export const envSchema = z.object({
   // Role names MUST match the roles defined in the 100ms template. Defaults suit
   // the "Video Conferencing" template; a "Virtual Classroom" template often uses
   // teacher/student (or similar) — set these to match, no code change needed.
-  HMS_HOST_ROLE: z.string().default('host'),
-  HMS_GUEST_ROLE: z.string().default('guest'),
+  HMS_HOST_ROLE: z.string().default('host'),   // teacher — publishes video/audio
+  HMS_GUEST_ROLE: z.string().default('guest'), // student default — view-only at scale
+  HMS_STAGE_ROLE: z.string().default('guest'), // role a raised-hand student is promoted to (can publish)
 });
 
 export type Env = z.infer<typeof envSchema>;

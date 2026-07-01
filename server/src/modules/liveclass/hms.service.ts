@@ -54,11 +54,19 @@ export class HmsService {
     return data.id;
   }
 
+  /** The template's actual role names (configurable per template). */
+  roles(): { host: string; stage: string; viewer: string } {
+    return {
+      host: this.config.get<string>('HMS_HOST_ROLE') ?? 'host',
+      stage: this.config.get<string>('HMS_STAGE_ROLE') ?? 'guest',
+      viewer: this.config.get<string>('HMS_GUEST_ROLE') ?? 'guest',
+    };
+  }
+
   /** Map our internal 'host'/'guest' to the template's actual role names. */
   private roleName(kind: 'host' | 'guest'): string {
-    return kind === 'host'
-      ? (this.config.get<string>('HMS_HOST_ROLE') ?? 'host')
-      : (this.config.get<string>('HMS_GUEST_ROLE') ?? 'guest');
+    const r = this.roles();
+    return kind === 'host' ? r.host : r.viewer;
   }
 
   /**

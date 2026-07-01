@@ -69,6 +69,7 @@ export class LiveClassService {
       videoEnabled: video,
       roomId: cls.hmsRoomId,
       token: video ? await this.hms.authToken(cls.hmsRoomId as string, `host-${host.id}`, 'host') : null,
+      roles: this.hms.roles(),
     };
   }
 
@@ -97,6 +98,7 @@ export class LiveClassService {
       videoEnabled: video,
       roomId: cls.hmsRoomId,
       token: video ? await this.hms.authToken(cls.hmsRoomId as string, `guest-${p.id}`, 'guest') : null,
+      roles: this.hms.roles(),
     };
   }
 

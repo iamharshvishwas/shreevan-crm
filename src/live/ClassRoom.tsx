@@ -41,7 +41,7 @@ export function ClassRoom({ info, cls, userName, onLeave }: { info: JoinInfo; cl
 
       {/* body: video + side panel */}
       <div style={{ flex: 1, display: 'flex', gap: 14, padding: '0 14px 14px', minHeight: 0 }}>
-        <VideoRoom room={{ videoEnabled: info.videoEnabled, token: info.token }} userName={userName} onLeave={onLeave} />
+        <VideoRoom room={{ videoEnabled: info.videoEnabled, token: info.token }} roles={info.roles} userName={userName} onLeave={onLeave} />
 
         <aside style={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 14, overflow: 'hidden' }}>
           <div style={{ display: 'flex', borderBottom: '1px solid var(--sw-line-soft)' }}>

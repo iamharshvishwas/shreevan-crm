@@ -2,7 +2,7 @@
  * client). Stores its own token under sw_live_token so it never collides with
  * staff auth. */
 
-import type { ChatMessage, PollView } from './roomTypes';
+import type { ChatMessage, PollView, Roles } from './roomTypes';
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000/api/v1';
 const TOKEN_KEY = 'sw_live_token';
@@ -73,6 +73,7 @@ export interface JoinInfo {
   videoEnabled: boolean;
   roomId: string | null;
   token: string | null;
+  roles: Roles;
 }
 
 export const liveApi = {

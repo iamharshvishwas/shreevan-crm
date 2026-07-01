@@ -1,7 +1,7 @@
 /* API client for the instructor host area (/teach). Separate token from staff
  * and learners — stored under sw_teach_token. */
 
-import type { ChatMessage, PollView } from '../live/roomTypes';
+import type { ChatMessage, PollView, Roles } from '../live/roomTypes';
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000/api/v1';
 const TOKEN_KEY = 'sw_teach_token';
@@ -55,6 +55,7 @@ export interface HostRoomInfo {
   videoEnabled: boolean;
   roomId: string | null;
   token: string | null;
+  roles: Roles;
 }
 
 export const teachApi = {

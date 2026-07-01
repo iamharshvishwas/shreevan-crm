@@ -40,7 +40,7 @@ export function HostRoom({ info, hostName, onLeave }: { info: HostRoomInfo; host
       </div>
 
       <div style={{ flex: 1, display: 'flex', gap: 14, padding: '0 14px 14px', minHeight: 0 }}>
-        <VideoRoom room={{ videoEnabled: info.videoEnabled, token: info.token }} userName={hostName} onLeave={onLeave} />
+        <VideoRoom room={{ videoEnabled: info.videoEnabled, token: info.token }} roles={info.roles} userName={hostName} onLeave={onLeave} />
         <aside style={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 14, overflow: 'hidden' }}>
           <div style={{ display: 'flex', borderBottom: '1px solid var(--sw-line-soft)' }}>
             {tabBtn('chat', '💬 Chat')}

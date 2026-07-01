@@ -1,6 +1,9 @@
 /* Shared types + UI for in-room chat and polls, used by both the learner room
  * (/live) and the host room (/teach). */
 
+/** 100ms role names for this class (from the backend, template-configurable). */
+export interface Roles { host: string; stage: string; viewer: string }
+
 export interface ChatMessage {
   id: string;
   authorName: string;
