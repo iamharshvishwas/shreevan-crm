@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { LiveClassStatus } from '@prisma/client';
+import { LiveClassMode, LiveClassStatus } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { HmsService } from './hms.service';
 import type { AuthInstructor } from './instructor/instructor-auth.guard';
@@ -17,7 +17,7 @@ export class LiveClassService {
 
   // ---- Host (instructor) ----
 
-  async create(host: AuthInstructor, input: { title: string; description?: string; scheduledAt?: string }) {
+  async create(host: AuthInstructor, input: { title: string; description?: string; mode?: LiveClassMode; scheduledAt?: string }) {
     const title = input.title.trim();
     if (title.length < 2) throw new BadRequestException('Class needs a title.');
     const slug = await this.uniqueSlug(slugify(title));
@@ -26,6 +26,7 @@ export class LiveClassService {
         title,
         slug,
         description: input.description?.trim() || null,
+        mode: input.mode ?? LiveClassMode.WEBINAR,
         hostId: host.id,
         scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null,
       },
@@ -65,6 +66,7 @@ export class LiveClassService {
     return {
       classId: cls.id,
       title: cls.title,
+      mode: cls.mode,
       role: 'host' as const,
       videoEnabled: video,
       roomId: cls.hmsRoomId,
@@ -81,7 +83,7 @@ export class LiveClassService {
       where: { status: { in: [LiveClassStatus.LIVE, LiveClassStatus.SCHEDULED] } },
       orderBy: [{ status: 'asc' }, { scheduledAt: 'asc' }, { createdAt: 'desc' }],
       take: 100,
-      select: { id: true, title: true, slug: true, description: true, status: true, scheduledAt: true, startedAt: true },
+      select: { id: true, title: true, slug: true, description: true, status: true, mode: true, scheduledAt: true, startedAt: true },
     });
   }
 
@@ -91,13 +93,16 @@ export class LiveClassService {
     if (!cls) throw new NotFoundException('Class not found.');
     if (cls.status !== LiveClassStatus.LIVE) throw new BadRequestException('This class is not live right now.');
     const video = this.hms.isConfigured() && !!cls.hmsRoomId;
+    // Meeting mode → students join able to publish; Webinar → view-only.
+    const kind = cls.mode === LiveClassMode.MEETING ? 'stage' : 'guest';
     return {
       classId: cls.id,
       title: cls.title,
+      mode: cls.mode,
       role: 'guest' as const,
       videoEnabled: video,
       roomId: cls.hmsRoomId,
-      token: video ? await this.hms.authToken(cls.hmsRoomId as string, `guest-${p.id}`, 'guest') : null,
+      token: video ? await this.hms.authToken(cls.hmsRoomId as string, `guest-${p.id}`, kind) : null,
       roles: this.hms.roles(),
     };
   }

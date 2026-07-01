@@ -1,7 +1,7 @@
 /* API client for the instructor host area (/teach). Separate token from staff
  * and learners — stored under sw_teach_token. */
 
-import type { ChatMessage, PollView, Roles } from '../live/roomTypes';
+import type { ChatMessage, ClassMode, PollView, Roles } from '../live/roomTypes';
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000/api/v1';
 const TOKEN_KEY = 'sw_teach_token';
@@ -44,6 +44,7 @@ export interface HostClass {
   slug: string;
   description: string | null;
   status: ClassStatus;
+  mode: ClassMode;
   scheduledAt: string | null;
   startedAt: string | null;
   endedAt: string | null;
@@ -62,7 +63,7 @@ export const teachApi = {
   login: (email: string, password: string) => req<InstructorSession>('POST', '/instructor/auth/login', { email, password }),
   me: () => req<Instructor>('GET', '/instructor/auth/me'),
   myClasses: () => req<HostClass[]>('GET', '/liveclass/host'),
-  create: (title: string, description?: string) => req<HostClass>('POST', '/liveclass', { title, description }),
+  create: (title: string, description: string | undefined, mode: ClassMode) => req<HostClass>('POST', '/liveclass', { title, description, mode }),
   start: (id: string) => req<HostClass>('POST', `/liveclass/${id}/start`),
   end: (id: string) => req<HostClass>('POST', `/liveclass/${id}/end`),
   hostToken: (id: string) => req<HostRoomInfo>('POST', `/liveclass/${id}/host-token`),

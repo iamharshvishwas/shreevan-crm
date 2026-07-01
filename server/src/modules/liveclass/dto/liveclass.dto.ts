@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsISO8601, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { LiveClassMode } from '@prisma/client';
+import { IsEnum, IsISO8601, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class CreateLiveClassDto {
   @ApiProperty({ example: 'cloud101' })
@@ -13,6 +14,11 @@ export class CreateLiveClassDto {
   @IsString()
   @MaxLength(2000)
   description?: string;
+
+  @ApiProperty({ required: false, enum: LiveClassMode, description: 'WEBINAR (view-only + raise hand) or MEETING (everyone can talk)' })
+  @IsOptional()
+  @IsEnum(LiveClassMode)
+  mode?: LiveClassMode;
 
   @ApiProperty({ required: false, description: 'ISO date-time' })
   @IsOptional()

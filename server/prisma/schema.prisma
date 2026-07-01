@@ -899,6 +899,11 @@ enum LiveClassStatus {
   ENDED     // finished
 }
 
+enum LiveClassMode {
+  WEBINAR // students view-only; raise hand → host allows to speak (large classes)
+  MEETING // everyone can self-control mic/cam (small interactive classes)
+}
+
 // Public learner who signs up to join classes. Isolated from staff User.
 model Participant {
   id           String   @id @default(uuid())
@@ -936,6 +941,7 @@ model LiveClass {
   slug        String          @unique // join handle, e.g. "cloud101"
   description String?
   status      LiveClassStatus @default(SCHEDULED)
+  mode        LiveClassMode   @default(WEBINAR)
   hmsRoomId   String?         // 100ms room id (created on first start)
   hostId      String
   host        Instructor      @relation("ClassHost", fields: [hostId], references: [id])

@@ -77,7 +77,7 @@ export function VideoRoom({ room, roles, userName, onLeave }: { room: RoomToken;
     if (room.videoEnabled && room.token && !joinedRef.current) {
       joinedRef.current = true;
       setError(null);
-      actions.join({ authToken: room.token, userName }).catch((e: unknown) => {
+      actions.join({ authToken: room.token, userName, settings: { isAudioMuted: true, isVideoMuted: true } }).catch((e: unknown) => {
         joinedRef.current = false;
         setError((e as Error)?.message || 'Could not connect to the video room.');
       });

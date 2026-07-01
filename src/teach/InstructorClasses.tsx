@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { teachApi, TeachApiError, type HostClass, type HostRoomInfo } from './teachApi';
+import type { ClassMode } from '../live/roomTypes';
 import type { InstructorStore } from './useInstructor';
 
 const card = { background: '#fff', border: '1px solid var(--sw-line-soft)', borderRadius: 'var(--radius-card)', padding: '18px 20px' } as const;
@@ -17,6 +18,7 @@ export function InstructorClasses({ store, onEnterRoom }: { store: InstructorSto
   const [busyId, setBusyId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [mode, setMode] = useState<ClassMode>('WEBINAR');
   const [creating, setCreating] = useState(false);
 
   async function load() {
@@ -37,7 +39,7 @@ export function InstructorClasses({ store, onEnterRoom }: { store: InstructorSto
     if (title.trim().length < 2) { setError('Give the class a title.'); return; }
     setCreating(true); setError(null);
     try {
-      await teachApi.create(title.trim(), description.trim() || undefined);
+      await teachApi.create(title.trim(), description.trim() || undefined, mode);
       setTitle(''); setDescription('');
       await load();
     } catch (e) { setError(e instanceof TeachApiError ? e.message : 'Could not create the class.'); }
@@ -79,6 +81,23 @@ export function InstructorClasses({ store, onEnterRoom }: { store: InstructorSto
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Class title — e.g. cloud101" style={input} />
             <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description (optional)" style={input} />
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--sw-stone-600)', marginBottom: 6 }}>Class type</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {([
+                  ['WEBINAR', '📢 Webinar', 'Students watch. Raise hand → you allow to speak. Best for big classes.'],
+                  ['MEETING', '👥 Meeting', 'Everyone can turn on their own mic & camera. Best for small groups.'],
+                ] as const).map(([m, label, desc]) => (
+                  <button key={m} type="button" onClick={() => setMode(m)}
+                    style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
+                      border: `1.5px solid ${mode === m ? 'var(--sw-forest-900)' : 'var(--sw-line-soft)'}`,
+                      background: mode === m ? 'rgba(23,61,50,0.05)' : '#fff' }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--sw-ink-900)' }}>{label}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--sw-stone-600)', marginTop: 2, lineHeight: 1.35 }}>{desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               {btn(creating ? 'Creating…' : 'Create class', () => void create(), 'primary', creating)}
             </div>
@@ -97,6 +116,7 @@ export function InstructorClasses({ store, onEnterRoom }: { store: InstructorSto
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
                   <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 16, color: 'var(--sw-ink-900)' }}>{c.title}</span>
                   <StatusPill status={c.status} />
+                  <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--sw-stone-600)', border: '1px solid var(--sw-line-soft)', borderRadius: 999, padding: '2px 8px' }}>{c.mode === 'MEETING' ? '👥 Meeting' : '📢 Webinar'}</span>
                 </div>
                 {c.description && <div style={{ fontSize: 13, color: 'var(--sw-stone-600)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.description}</div>}
               </div>

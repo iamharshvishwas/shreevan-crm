@@ -4,6 +4,9 @@
 /** 100ms role names for this class (from the backend, template-configurable). */
 export interface Roles { host: string; stage: string; viewer: string }
 
+/** WEBINAR = students view-only + raise hand; MEETING = everyone self-controls mic/cam. */
+export type ClassMode = 'WEBINAR' | 'MEETING';
+
 export interface ChatMessage {
   id: string;
   authorName: string;
