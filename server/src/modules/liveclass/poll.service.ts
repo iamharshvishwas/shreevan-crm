@@ -62,7 +62,7 @@ export class PollService {
     if (opts.length > 6) throw new BadRequestException('At most six options.');
 
     await this.prisma.poll.updateMany({ where: { classId, isOpen: true }, data: { isOpen: false, closedAt: new Date() } });
-    const poll = await this.prisma.poll.create({
+    await this.prisma.poll.create({
       data: { classId, question: q, options: { create: opts.map((text, i) => ({ text: text.slice(0, 120), order: i })) } },
     });
     return (await this.current(classId))!;

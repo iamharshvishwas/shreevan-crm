@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Channel } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { VedaConfigService } from '../veda-config.service';
 import { VedaLogService } from '../veda-log.service';

@@ -54,7 +54,6 @@ async function bootstrap(): Promise<void> {
 
   const port = config.get<number>('PORT') ?? 3000;
   await app.listen(port);
-  // eslint-disable-next-line no-console
   console.log(`Shreevan CRM API on http://localhost:${port}/api/v1 — docs at /api/docs`);
 }
 
