@@ -51,7 +51,7 @@ export class ImapInboundService {
     try {
       await client.connect();
     } catch (e) {
-      this.logger.warn(`IMAP connect failed: ${(e as Error).message}`);
+      this.logger.warn(`IMAP connect failed: ${describeImapError(e)}`);
       return;
     }
 
@@ -78,7 +78,7 @@ export class ImapInboundService {
               processed++;
             }
           } catch (e) {
-            this.logger.error(`IMAP inbound message uid=${uid} failed: ${(e as Error).message}`);
+            this.logger.error(`IMAP inbound message uid=${uid} failed: ${describeImapError(e)}`);
           } finally {
             await client.messageFlagsAdd(uid, ['\\Seen'], { uid: true }).catch(() => undefined);
           }
@@ -87,13 +87,25 @@ export class ImapInboundService {
         lock.release();
       }
     } catch (e) {
-      this.logger.error(`IMAP inbound poll failed: ${(e as Error).message}`);
+      this.logger.error(`IMAP inbound poll failed: ${describeImapError(e)}`);
     } finally {
       await client.logout().catch(() => undefined);
     }
 
     if (processed) await this.logs.write({ type: 'EMAIL_INBOUND', status: 'COMPLETED', output: { processed } as object, completedAt: new Date() });
   }
+}
+
+/** imapflow's errors for a server-rejected command (bad login, missing mailbox,
+ *  etc.) all say just "Command failed" — the actually useful detail (what the
+ *  server said, which command) is on extra properties, not the message. */
+function describeImapError(e: unknown): string {
+  const err = e as Error & { responseText?: string; executedCommand?: string; responseStatus?: string };
+  if (err?.responseText) {
+    const cmd = err.executedCommand?.split(' ')[1]; // "<tag> LOGIN ..." → "LOGIN"
+    return `${err.responseStatus ?? 'server rejected'}${cmd ? ` ${cmd}` : ''} — ${err.responseText}`;
+  }
+  return err?.message ?? String(e);
 }
 
 /** Skip bulk/automated mail (newsletters, notifications, no-reply, auto-responders). */
