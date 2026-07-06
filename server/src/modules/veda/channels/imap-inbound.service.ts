@@ -60,6 +60,7 @@ export class ImapInboundService {
       const lock = await client.getMailboxLock(this.env.get<string>('IMAP_MAILBOX') ?? 'INBOX');
       try {
         const uids = (await client.search({ seen: false }, { uid: true })) || [];
+        this.logger.debug(`IMAP poll: connected, ${uids.length} unseen`);
         for (const uid of uids.slice(0, BATCH)) {
           try {
             const msg = await client.fetchOne(uid, { source: true }, { uid: true });
