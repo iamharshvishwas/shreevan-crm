@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import type { AuthStore } from '../auth/useAuth';
 import { ApiError } from '../api/client';
+import { PasswordInput } from '../components/ui';
 
 const inputStyle = {
   width: '100%',
@@ -135,7 +136,7 @@ export function Login({ auth }: { auth: AuthStore }) {
             </div>
             <div style={{ marginBottom: 6 }}>
               <label htmlFor="password" style={labelStyle}>Password</label>
-              <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" style={inputStyle} autoComplete="current-password" />
+              <PasswordInput id="password" value={password} onChange={setPassword} placeholder="••••••••" style={inputStyle} autoComplete="current-password" />
             </div>
 
             {error && (

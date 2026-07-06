@@ -1,5 +1,7 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { useState } from 'react';
+import type { CSSProperties, KeyboardEvent, ReactNode } from 'react';
 import { initials } from '../data';
+import { EyeIcon, EyeOffIcon } from './icons';
 
 /* Status / temperature pill — always dot + text, never colour alone. */
 export function Pill({
@@ -215,6 +217,66 @@ export function SolidButton({
     >
       {children}
     </button>
+  );
+}
+
+/* Password input with a show/hide eye toggle. Wraps any existing input style;
+   pass the same style object used for adjacent fields so it lines up visually. */
+export function PasswordInput({
+  id,
+  value,
+  onChange,
+  onKeyDown,
+  placeholder,
+  autoComplete,
+  style,
+}: {
+  id?: string;
+  value: string;
+  onChange: (value: string) => void;
+  onKeyDown?: (e: KeyboardEvent<HTMLInputElement>) => void;
+  placeholder?: string;
+  autoComplete?: string;
+  style?: CSSProperties;
+}) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div style={{ position: 'relative', width: '100%' }}>
+      <input
+        id={id}
+        type={visible ? 'text' : 'password'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={onKeyDown}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        style={{ ...style, width: '100%', paddingRight: 40 }}
+      />
+      <button
+        type="button"
+        onClick={() => setVisible((v) => !v)}
+        aria-label={visible ? 'Hide password' : 'Show password'}
+        aria-pressed={visible}
+        tabIndex={-1}
+        style={{
+          position: 'absolute',
+          right: 10,
+          top: '50%',
+          transform: 'translateY(-50%)',
+          background: 'none',
+          border: 'none',
+          padding: 4,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--sw-stone-600)',
+        }}
+      >
+        {visible ? <EyeOffIcon size={17} /> : <EyeIcon size={17} />}
+      </button>
+    </div>
   );
 }
 

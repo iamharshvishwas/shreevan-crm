@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { TeachApiError } from './teachApi';
 import type { InstructorStore } from './useInstructor';
+import { PasswordInput } from '../components/ui';
 
 const input = { width: '100%', height: 44, border: '1px solid var(--sw-line-soft)', borderRadius: 8, padding: '0 14px', fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--sw-ink-900)', background: '#fff' } as const;
 const label = { display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--sw-ink-900)', marginBottom: 6 } as const;
@@ -45,7 +46,7 @@ export function InstructorAuth({ store }: { store: InstructorStore }) {
           </div>
           <div style={{ marginBottom: 6 }}>
             <label htmlFor="ipass" style={label}>Password</label>
-            <input id="ipass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={input} autoComplete="current-password" placeholder="••••••••" />
+            <PasswordInput id="ipass" value={password} onChange={setPassword} style={input} autoComplete="current-password" placeholder="••••••••" />
           </div>
 
           {error && (

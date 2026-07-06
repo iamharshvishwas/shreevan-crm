@@ -90,6 +90,22 @@ export const ErrorCircleIcon = () => (
   <Ic parts={[{ c: [12, 12, 10] }, 'M12 8v4', 'M12 16h.01']} size={14} strokeWidth={2} />
 );
 
+export const EyeIcon = ({ size = 18 }: { size?: number }) => (
+  <Ic parts={['M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z', { c: [12, 12, 3] }]} size={size} />
+);
+
+export const EyeOffIcon = ({ size = 18 }: { size?: number }) => (
+  <Ic
+    parts={[
+      'M10.7 5.1A9.9 9.9 0 0 1 12 5c6.5 0 10 7 10 7a13.2 13.2 0 0 1-1.7 2.4',
+      'M6.6 6.6A13.2 13.2 0 0 0 2 12s3.5 7 10 7a9.9 9.9 0 0 0 5.4-1.6',
+      'M9.9 9.9a3 3 0 0 0 4.2 4.2',
+      'M2 2l20 20',
+    ]}
+    size={size}
+  />
+);
+
 export const PhoneIcon = ({ size = 14 }: { size?: number }) => (
   <Ic
     parts={[

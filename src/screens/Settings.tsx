@@ -5,7 +5,7 @@ import {
   changePassword, get2faStatus, setup2fa, enable2fa, disable2fa,
   type TwoFactorSetup,
 } from '../api/auth';
-import { Callout } from '../components/ui';
+import { Callout, PasswordInput } from '../components/ui';
 import { CHANNEL_LABEL } from '../api/enquiries';
 import {
   ROLES, ROLE_LABEL, isAdmin, useManageUsers, useUsers, usersApi,
@@ -186,8 +186,8 @@ function PasswordCard({ app }: { app: AppStore }) {
   const field = (label: string, value: string, set: (v: string) => void, placeholder: string) => (
     <label style={{ display: 'block' }}>
       <span style={{ display: 'block', fontSize: 12, color: 'var(--sw-stone-600)', marginBottom: 5 }}>{label}</span>
-      <input type="password" value={value} placeholder={placeholder} autoComplete="off"
-        onChange={(e) => set(e.target.value)}
+      <PasswordInput value={value} placeholder={placeholder} autoComplete="off"
+        onChange={set}
         onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
         style={inputStyle} />
     </label>

@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { LiveApiError } from './liveApi';
 import type { ParticipantStore } from './useParticipant';
+import { PasswordInput } from '../components/ui';
 
 const input = {
   width: '100%', height: 44, border: '1px solid var(--sw-line-soft)', borderRadius: 8,
@@ -65,7 +66,7 @@ export function ParticipantAuth({ store }: { store: ParticipantStore }) {
           </div>
           <div style={{ marginBottom: 6 }}>
             <label htmlFor="ppass" style={label}>Password</label>
-            <input id="ppass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={input} autoComplete={isSignup ? 'new-password' : 'current-password'} placeholder={isSignup ? 'At least 10 characters' : '••••••••'} />
+            <PasswordInput id="ppass" value={password} onChange={setPassword} style={input} autoComplete={isSignup ? 'new-password' : 'current-password'} placeholder={isSignup ? 'At least 10 characters' : '••••••••'} />
           </div>
 
           {error && (
