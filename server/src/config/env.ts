@@ -22,22 +22,20 @@ export const envSchema = z.object({
   // OpenAI API key from platform.openai.com (NOT a ChatGPT subscription).
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().default('gpt-4o-mini'),
-  // Outbound email. Two options (SMTP takes priority over Resend):
-  //  - SMTP (e.g. Gmail with an App Password) — lets Veda send from a Gmail address.
-  //  - Resend API — needs a verified domain.
+  // Outbound email — the business mailbox (e.g. contact@shreevanwellness.com via
+  // your hosting provider's SMTP). Resend is a fallback if SMTP isn't set.
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().positive().default(465),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
-  // Gmail API (OAuth) — HTTPS, works on Railway where SMTP ports are blocked.
-  GMAIL_CLIENT_ID: z.string().optional(),
-  GMAIL_CLIENT_SECRET: z.string().optional(),
-  GMAIL_REFRESH_TOKEN: z.string().optional(),
-  // Inbound: Veda ONLY reads unread mail under this Gmail label. Unset = inbound OFF
-  // (prevents processing a whole personal inbox). Use 'INBOX' for a dedicated mailbox.
-  GMAIL_INBOUND_LABEL: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
-  VEDA_FROM_EMAIL: z.string().default('Veda · Shreevan Wellness <veda@shreevanwellness.com>'),
+  VEDA_FROM_EMAIL: z.string().default('Veda · Shreevan Wellness <contact@shreevanwellness.com>'),
+  // Inbound (optional): Veda reads unread mail from the same mailbox over IMAP and
+  // replies automatically. Unset IMAP_HOST = inbound OFF (outbound sending is
+  // unaffected). Reuses SMTP_USER/SMTP_PASS as the IMAP login — same mailbox.
+  IMAP_HOST: z.string().optional(),
+  IMAP_PORT: z.coerce.number().int().positive().default(993),
+  IMAP_MAILBOX: z.string().default('INBOX'),
   // Shared secret for the inbound-email webhook (Postmark/Mailgun/SendGrid → /webhooks/email).
   EMAIL_WEBHOOK_SECRET: z.string().optional(),
 
