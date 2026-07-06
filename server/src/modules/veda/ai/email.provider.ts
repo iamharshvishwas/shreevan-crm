@@ -41,8 +41,19 @@ export class EmailProvider {
   }
 
   async send(input: SendEmailInput): Promise<SendEmailResult> {
-    if (this.smtpReady) return this.sendViaSmtp(input);
-    if (this.config.get<string>('RESEND_API_KEY')) return this.sendViaResend(input);
+    const resendKey = this.config.get<string>('RESEND_API_KEY');
+    if (this.smtpReady) {
+      try {
+        return await this.sendViaSmtp(input);
+      } catch (e) {
+        // Some hosts (Railway included) block outbound SMTP egress entirely —
+        // connections there time out rather than being refused. Fall back to
+        // the HTTPS-based Resend API instead of hard-failing the send.
+        if (!resendKey) throw e;
+        this.logger.warn(`SMTP send failed, falling back to Resend: ${(e as Error).message}`);
+      }
+    }
+    if (resendKey) return this.sendViaResend(input);
 
     this.logger.log(`[simulated email] to=${input.to} subject="${input.subject}"`);
     return { delivered: false, simulated: true, detail: 'Recorded locally — configure SMTP / Resend to send.' };
