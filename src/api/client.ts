@@ -51,7 +51,25 @@ export interface ApiErrorShape {
 
 export class ApiError extends Error {
   constructor(readonly status: number, readonly body: ApiErrorShape | null) {
-    super(body?.message ?? `Request failed (${status})`);
+    super(ApiError.buildMessage(status, body));
+  }
+
+  /**
+   * Surface the actual validation reasons in the message. The API returns a
+   * generic top-level "Validation failed." plus per-field detail in
+   * `fieldErrors` — without folding those in, toasts show only the generic
+   * line and the user can't tell what was wrong (e.g. password too short).
+   */
+  private static buildMessage(status: number, body: ApiErrorShape | null): string {
+    const base = body?.message ?? `Request failed (${status})`;
+    const details = body?.fieldErrors
+      ? Object.values(body.fieldErrors).flat().filter(Boolean)
+      : [];
+
+    if (!details.length) return base;
+    // If the base is the generic "Validation failed.", the details ARE the
+    // message; otherwise append them.
+    return /validation failed/i.test(base) ? details.join(' ') : `${base} ${details.join(' ')}`;
   }
 }
 
