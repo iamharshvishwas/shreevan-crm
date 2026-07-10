@@ -461,7 +461,7 @@ function AdminTeam({ app }: { app: AppStore }) {
           <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })} style={{ ...inputStyle, cursor: 'pointer' }}>
             {ROLES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
           </select>
-          <input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Temporary password (8+ chars)" type="text" style={inputStyle} />
+          <input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Temporary password (10+ chars, incl. a number)" type="text" style={inputStyle} />
           <div style={{ gridColumn: '1 / -1' }}>
             <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--sw-stone-600)', marginBottom: 8 }}>
               Screen access {form.role === 'ADMIN' && '(admins see everything)'}
