@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { Roles } from '../../common/auth/decorators';
+import { Roles, RequireScreens } from '../../common/auth/decorators';
 import { CurrentUser } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/auth.types';
 import { LeadsService } from './leads.service';
@@ -11,6 +11,7 @@ import {
 @ApiTags('leads')
 @ApiBearerAuth()
 @Controller('leads')
+@RequireScreens('leads')
 export class LeadsController {
   constructor(private readonly leads: LeadsService) {}
 

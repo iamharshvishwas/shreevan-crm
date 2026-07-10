@@ -10,7 +10,7 @@ import { NormalizedInboundEvent } from '../../enquiries/dto/inbound-event.dto';
 import { VedaChatService } from '../agents/veda-chat.service';
 import { VedaLearningService } from '../agents/veda-learning.service';
 import { ElevenLabsProvider } from './eleven-labs.provider';
-import { Public, CurrentUser } from '../../../common/auth/decorators';
+import { Public, CurrentUser, RequireScreens } from '../../../common/auth/decorators';
 import type { AuthUser } from '../../../common/auth/auth.types';
 import { ChatMessageDto } from '../dto/veda.dto';
 
@@ -28,6 +28,7 @@ function pickIdentity(identities: { channel: Channel; handle: string }[] | undef
  */
 @ApiTags('chat')
 @Controller('chat')
+@RequireScreens('livechat')
 export class ChatController {
   constructor(
     private readonly prisma: PrismaService,

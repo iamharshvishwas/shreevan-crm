@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { RequireScreens } from '../../common/auth/decorators';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsISO8601, IsOptional, IsString } from 'class-validator';
 import { TasksService } from './tasks.service';
@@ -15,6 +16,7 @@ class CreateTaskDto {
 @ApiTags('tasks')
 @ApiBearerAuth()
 @Controller('tasks')
+@RequireScreens('tasks')
 export class TasksController {
   constructor(private readonly tasks: TasksService) {}
 

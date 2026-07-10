@@ -43,25 +43,24 @@ const LOST_REASONS = [
 ];
 
 async function main(): Promise<void> {
-  // --- Users (dev fixtures) ---
-  // Keyed by email, not role: roles are not unique per user (e.g. multiple admins).
+  // --- Users ---
+  // Only the admin is seeded. Real employees are invited from the CRM admin UI
+  // (Settings → Team), where the admin assigns each their own role and per-user
+  // screen access (allowedScreens). We deliberately do NOT pre-create staff
+  // accounts with fixed roles here.
   const HARSH = 'harsh@shreevanwellness.com';
-  const TUSHAR = 'tushar@shreevanwellness.com';
-  const ISHA = 'isha@shreevanwellness.com';
   const password = await argon2.hash('changeme123');
-  const users: Record<string, string> = {};
-  for (const u of [
-    { email: HARSH, name: 'Harsh Vishwas', role: Role.ADMIN },
-    { email: TUSHAR, name: 'Tushar Dutta', role: Role.MARKETING },
-    { email: ISHA, name: 'Isha Dutta', role: Role.RELATIONSHIP },
-  ]) {
-    const user = await prisma.user.upsert({
-      where: { email: u.email },
-      update: { name: u.name, role: u.role },
-      create: { email: u.email, name: u.name, role: u.role, passwordHash: password },
-    });
-    users[u.email] = user.id;
-  }
+  const admin = await prisma.user.upsert({
+    where: { email: HARSH },
+    update: { name: 'Harsh Vishwas', role: Role.ADMIN, allowedScreens: [] },
+    create: { email: HARSH, name: 'Harsh Vishwas', role: Role.ADMIN, allowedScreens: [], passwordHash: password },
+  });
+  // The sample business data below (routing rules, enquiries, pipeline leads)
+  // needs an owner. Until real staff exist, everything is owned by the admin —
+  // these aliases keep the demo owner references resolving to Harsh.
+  const ISHA = HARSH;
+  const TUSHAR = HARSH;
+  const users: Record<string, string> = { [HARSH]: admin.id };
 
   // --- Lookups ---
   for (const s of STAGES) {

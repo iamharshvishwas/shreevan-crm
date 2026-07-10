@@ -20,6 +20,7 @@ import { Instructors } from './screens/Instructors';
 import { Login } from './screens/Login';
 import { useAppStore } from './store';
 import { useAuth, type AuthStore } from './auth/useAuth';
+import { accessResolved, canSeeScreen, firstAllowedScreen } from './auth/access';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 export function App() {
@@ -31,9 +32,26 @@ export function App() {
 function AuthedApp({ auth }: { auth: AuthStore }) {
   const app = useAppStore();
 
+  // Don't render screens until we know this user's access (avoids flashing a
+  // screen a non-admin isn't allowed to see, and landing them on a disallowed
+  // default). Admin access is known from the token immediately.
+  if (!accessResolved(auth.user)) {
+    return (
+      <div style={{ height: '100vh', display: 'grid', placeItems: 'center', color: 'var(--sw-ink-500, #6b7280)', fontFamily: 'var(--font-body)' }}>
+        Loading your workspace…
+      </div>
+    );
+  }
+
+  // The single choke point: whatever `app.screen` is, if the user can't see it
+  // (initial 'overview' default, a deep-link, or any programmatic goNav),
+  // substitute their first allowed screen. This is enforced regardless of how
+  // the screen was set — the sidebar filter only hides the nav buttons.
+  const activeScreen = canSeeScreen(auth.user, app.screen) ? app.screen : firstAllowedScreen(auth.user);
+
   function renderScreen() {
     if (app.selectedLeadId) return <LeadProfile app={app} />;
-    switch (app.screen) {
+    switch (activeScreen) {
       case 'overview':
         return <Overview app={app} />;
       case 'enquiries':
@@ -66,7 +84,7 @@ function AuthedApp({ auth }: { auth: AuthStore }) {
   }
 
   // The pipeline board and the inbox manage their own internal scroll/height.
-  const fillHeight = (app.screen === 'pipeline' || app.screen === 'enquiries' || app.screen === 'livechat') && !app.selectedLeadId;
+  const fillHeight = (activeScreen === 'pipeline' || activeScreen === 'enquiries' || activeScreen === 'livechat') && !app.selectedLeadId;
 
   return (
     <div
@@ -83,8 +101,8 @@ function AuthedApp({ auth }: { auth: AuthStore }) {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Topbar app={app} />
         <main style={{ flex: 1, overflowY: fillHeight ? 'hidden' : 'auto', minWidth: 0 }}>
-          <div className="sw-screen" key={app.selectedLeadId ?? app.screen}>
-            <ErrorBoundary variant="screen" resetKey={app.selectedLeadId ?? app.screen}>
+          <div className="sw-screen" key={app.selectedLeadId ?? activeScreen}>
+            <ErrorBoundary variant="screen" resetKey={app.selectedLeadId ?? activeScreen}>
               {renderScreen()}
             </ErrorBoundary>
           </div>
