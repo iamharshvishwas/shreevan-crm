@@ -184,6 +184,9 @@ model User {
   passwordHash String
   name         String
   role         Role     @default(RELATIONSHIP)
+  // Per-user CRM screen access (frontend nav + backend ScreensGuard). Empty for
+  // ADMIN, who bypasses screen checks entirely. Values are frontend ScreenKeys.
+  allowedScreens String[] @default([])
   isActive     Boolean  @default(true)
   failedLoginAttempts Int      @default(0)
   lockedUntil         DateTime?

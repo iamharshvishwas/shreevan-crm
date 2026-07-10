@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { RequireScreens } from '../../common/auth/decorators';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsEnum } from 'class-validator';
 import { OnboardingStatus } from '@prisma/client';
@@ -9,6 +10,7 @@ class OnboardingDto { @IsEnum(OnboardingStatus) status!: OnboardingStatus; }
 @ApiTags('customers')
 @ApiBearerAuth()
 @Controller('customers')
+@RequireScreens('customers')
 export class CustomersController {
   constructor(private readonly customers: CustomersService) {}
 

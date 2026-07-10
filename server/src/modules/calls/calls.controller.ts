@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { RequireScreens } from '../../common/auth/decorators';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsISO8601, IsOptional, IsString } from 'class-validator';
 import { CallsService } from './calls.service';
@@ -9,6 +10,7 @@ class RescheduleCallDto { @IsISO8601() scheduledAt!: string; }
 @ApiTags('discovery-calls')
 @ApiBearerAuth()
 @Controller('discovery-calls')
+@RequireScreens('calls')
 export class CallsController {
   constructor(private readonly calls: CallsService) {}
 

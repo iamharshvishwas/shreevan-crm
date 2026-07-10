@@ -13,6 +13,7 @@ import {
 } from '../api/users';
 import { useStages } from '../api/leads';
 import { CONN_STATUS, useChannels, useRoutingRules, useSlaPolicies } from '../api/settings';
+import { SCREENS, type ScreenKey } from '../types';
 
 const ROLE_TAG: Record<Role, string> = { ADMIN: 'Admin', RELATIONSHIP: 'Member', MARKETING: 'Member', OPERATIONS: 'Member' };
 const ROLE_BG: Record<Role, string> = { ADMIN: 'var(--sw-forest-900)', RELATIONSHIP: 'var(--sw-gold-500)', MARKETING: 'var(--sw-moss-600)', OPERATIONS: 'var(--sw-river-600)' };
@@ -410,10 +411,27 @@ function ReadonlyTeam() {
   );
 }
 
+/** Checkbox grid for choosing which CRM screens a user can access. */
+function ScreenPicker({ value, onChange }: { value: ScreenKey[]; onChange: (next: ScreenKey[]) => void }) {
+  const toggle = (key: ScreenKey) =>
+    onChange(value.includes(key) ? value.filter((k) => k !== key) : [...value, key]);
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 6 }}>
+      {SCREENS.filter((s) => s.key !== 'settings').map((s) => (
+        <label key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, cursor: 'pointer', color: 'var(--sw-ink-900)' }}>
+          <input type="checkbox" checked={value.includes(s.key)} onChange={() => toggle(s.key)} style={{ cursor: 'pointer' }} />
+          {s.label}
+        </label>
+      ))}
+    </div>
+  );
+}
+
 function AdminTeam({ app }: { app: AppStore }) {
   const { users, reload } = useManageUsers();
   const [inviting, setInviting] = useState(false);
-  const [form, setForm] = useState<NewUser>({ email: '', name: '', role: 'RELATIONSHIP', password: '' });
+  const [form, setForm] = useState<NewUser>({ email: '', name: '', role: 'RELATIONSHIP', password: '', allowedScreens: [] });
+  const [editingAccess, setEditingAccess] = useState<string | null>(null);
 
   async function run(fn: () => Promise<unknown>, ok: string) {
     try { await fn(); app.showToastMsg(ok); reload(); }
@@ -423,7 +441,7 @@ function AdminTeam({ app }: { app: AppStore }) {
   async function invite() {
     if (!form.email.trim() || !form.name.trim() || form.password.length < 8) { app.showToastMsg('Name, email and an 8+ char password are required.'); return; }
     await run(() => usersApi.create(form), `${form.name} added to the team.`);
-    setForm({ email: '', name: '', role: 'RELATIONSHIP', password: '' });
+    setForm({ email: '', name: '', role: 'RELATIONSHIP', password: '', allowedScreens: [] });
     setInviting(false);
   }
 
@@ -444,6 +462,12 @@ function AdminTeam({ app }: { app: AppStore }) {
             {ROLES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
           </select>
           <input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Temporary password (8+ chars)" type="text" style={inputStyle} />
+          <div style={{ gridColumn: '1 / -1' }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--sw-stone-600)', marginBottom: 8 }}>
+              Screen access {form.role === 'ADMIN' && '(admins see everything)'}
+            </div>
+            <ScreenPicker value={form.allowedScreens ?? []} onChange={(next) => setForm({ ...form, allowedScreens: next })} />
+          </div>
           <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end' }}>
             <button onClick={invite} className="hov-forest-deep" style={{ height: 34, padding: '0 18px', borderRadius: 999, border: '1px solid var(--sw-forest-900)', background: 'var(--sw-forest-900)', color: '#fff', fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Add teammate</button>
           </div>
@@ -452,20 +476,39 @@ function AdminTeam({ app }: { app: AppStore }) {
 
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {users.map((u: ManageUser, i) => (
-          <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', borderBottom: i < users.length - 1 ? '1px solid var(--sw-mist-100)' : 'none', opacity: u.isActive ? 1 : 0.55 }}>
-            <span style={{ width: 34, height: 34, borderRadius: '50%', background: ROLE_BG[u.role], color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11.5, fontWeight: 700, flexShrink: 0 }}>{initials(u.name)}</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}{!u.isActive && <span style={{ fontSize: 11, color: 'var(--sw-stone-600)', fontWeight: 400 }}> · disabled</span>}</div>
-              <div style={{ fontSize: 12, color: 'var(--sw-stone-600)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.email}</div>
+          <div key={u.id} style={{ borderBottom: i < users.length - 1 ? '1px solid var(--sw-mist-100)' : 'none', opacity: u.isActive ? 1 : 0.55 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0' }}>
+              <span style={{ width: 34, height: 34, borderRadius: '50%', background: ROLE_BG[u.role], color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11.5, fontWeight: 700, flexShrink: 0 }}>{initials(u.name)}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}{!u.isActive && <span style={{ fontSize: 11, color: 'var(--sw-stone-600)', fontWeight: 400 }}> · disabled</span>}</div>
+                <div style={{ fontSize: 12, color: 'var(--sw-stone-600)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.email}</div>
+              </div>
+              <button onClick={() => setEditingAccess((cur) => (cur === u.id ? null : u.id))} className="hov-mist"
+                title={u.role === 'ADMIN' ? 'Admins see every screen' : `${u.allowedScreens.length} screens`}
+                style={{ height: 32, padding: '0 12px', borderRadius: 999, border: '1px solid var(--sw-line-soft)', background: editingAccess === u.id ? 'var(--sw-mist-100)' : '#fff', color: 'var(--sw-forest-900)', fontFamily: 'var(--font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                {u.role === 'ADMIN' ? 'All access' : `Access · ${u.allowedScreens.length}`}
+              </button>
+              <select value={u.role} onChange={(e) => run(() => usersApi.updateRole(u.id, e.target.value as Role), `${u.name} is now ${ROLE_LABEL[e.target.value as Role]}.`)}
+                style={{ height: 32, border: '1px solid var(--sw-line-soft)', borderRadius: 8, background: '#fff', fontFamily: 'var(--font-body)', fontSize: 12.5, fontWeight: 600, color: 'var(--sw-ink-900)', padding: '0 8px', cursor: 'pointer', flexShrink: 0 }}>
+                {ROLES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+              </select>
+              <button onClick={() => run(() => usersApi.setActive(u.id, !u.isActive), `${u.name} ${u.isActive ? 'deactivated' : 'reactivated'}.`)} className="hov-mist"
+                style={{ height: 32, padding: '0 12px', borderRadius: 999, border: '1px solid var(--sw-line-soft)', background: '#fff', color: u.isActive ? 'var(--sw-error)' : 'var(--sw-forest-900)', fontFamily: 'var(--font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                {u.isActive ? 'Deactivate' : 'Reactivate'}
+              </button>
             </div>
-            <select value={u.role} onChange={(e) => run(() => usersApi.updateRole(u.id, e.target.value as Role), `${u.name} is now ${ROLE_LABEL[e.target.value as Role]}.`)}
-              style={{ height: 32, border: '1px solid var(--sw-line-soft)', borderRadius: 8, background: '#fff', fontFamily: 'var(--font-body)', fontSize: 12.5, fontWeight: 600, color: 'var(--sw-ink-900)', padding: '0 8px', cursor: 'pointer', flexShrink: 0 }}>
-              {ROLES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
-            </select>
-            <button onClick={() => run(() => usersApi.setActive(u.id, !u.isActive), `${u.name} ${u.isActive ? 'deactivated' : 'reactivated'}.`)} className="hov-mist"
-              style={{ height: 32, padding: '0 12px', borderRadius: 999, border: '1px solid var(--sw-line-soft)', background: '#fff', color: u.isActive ? 'var(--sw-error)' : 'var(--sw-forest-900)', fontFamily: 'var(--font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
-              {u.isActive ? 'Deactivate' : 'Reactivate'}
-            </button>
+            {editingAccess === u.id && (
+              <div style={{ padding: '4px 0 16px 46px' }}>
+                {u.role === 'ADMIN' ? (
+                  <div style={{ fontSize: 12.5, color: 'var(--sw-stone-600)' }}>Admins have access to every screen — nothing to configure.</div>
+                ) : (
+                  <ScreenPicker
+                    value={u.allowedScreens}
+                    onChange={(next) => run(() => usersApi.setScreens(u.id, next), `Updated ${u.name}'s screen access.`)}
+                  />
+                )}
+              </div>
+            )}
           </div>
         ))}
         {users.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--sw-stone-600)' }}>Loading team…</div>}

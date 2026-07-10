@@ -1,10 +1,12 @@
 import { Controller, Get } from '@nestjs/common';
+import { RequireScreens } from '../../common/auth/decorators';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
 
 @ApiTags('reports')
 @ApiBearerAuth()
 @Controller('reports')
+@RequireScreens('reports')
 export class ReportsController {
   constructor(private readonly reports: ReportsService) {}
 

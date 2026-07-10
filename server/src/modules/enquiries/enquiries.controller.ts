@@ -6,12 +6,13 @@ import {
   AddNoteDto, AssignDto, ConvertToLeadDto, CreateTaskDto, ListEnquiriesDto,
   ResponseDto, ScheduleCallDto, SetStatusDto,
 } from './dto/enquiries.dto';
-import { CurrentUser } from '../../common/auth/decorators';
+import { CurrentUser, RequireScreens } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/auth.types';
 
 @ApiTags('enquiries')
 @ApiBearerAuth()
 @Controller('enquiries')
+@RequireScreens('enquiries')
 export class EnquiriesController {
   constructor(
     private readonly enquiries: EnquiriesService,

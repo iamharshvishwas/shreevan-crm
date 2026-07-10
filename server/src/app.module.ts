@@ -8,6 +8,7 @@ import { PrismaModule } from './database/prisma.module';
 import { AllExceptionsFilter } from './common/errors/all-exceptions.filter';
 import { JwtAuthGuard } from './common/auth/jwt-auth.guard';
 import { RolesGuard } from './common/auth/roles.guard';
+import { ScreensGuard } from './common/auth/screens.guard';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -54,6 +55,7 @@ import { LiveClassModule } from './modules/liveclass/liveclass.module';
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: ScreensGuard },
   ],
 })
 export class AppModule implements NestModule {

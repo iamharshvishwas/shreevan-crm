@@ -1,5 +1,6 @@
 import type { AppStore } from '../store';
 import type { AuthStore } from '../auth/useAuth';
+import { canSeeScreen } from '../auth/access';
 import type { ScreenKey } from '../types';
 import { initials } from '../data';
 import { useActionableCount } from '../api/enquiries';
@@ -74,7 +75,7 @@ export function Sidebar({ app, auth }: { app: AppStore; auth: AuthStore }) {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '8px 12px', flex: 1, overflowY: 'auto' }}>
-        {NAV.filter((item) => !item.adminOnly || auth.user?.role === 'ADMIN').map((item) => {
+        {NAV.filter((item) => canSeeScreen(auth.user, item.key)).map((item) => {
           const active = app.screen === item.key && !app.selectedLeadId;
           const badge = item.key === 'enquiries' ? enquiryBadge : 0;
           return (
