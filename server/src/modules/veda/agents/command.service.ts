@@ -20,6 +20,20 @@ const TOOLS: ToolDef[] = [
   {
     type: 'function',
     function: {
+      name: 'find_person',
+      description: 'Look up ANY person by name — website live-chat visitors, enquiries, and leads alike — and get everything on file: contact details (email/phone), their enquiries, whether they became a lead, and their most recent conversation. Use this for "who is X", "tell me about X", "did X message/contact us", or any question about someone who may NOT be a lead yet. For lead-pipeline lists (hot leads, leads missing a next action) use search_leads instead.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: "The person's name, or part of it" },
+        },
+        required: ['name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'search_leads',
       description: 'Search/list leads. Use view "hot" for hot leads, "no_next_action" for leads missing a next step, "active" for all open leads.',
       parameters: {
@@ -175,6 +189,49 @@ Keep replies short and conversational; they will be read aloud. After taking an 
     userId: string,
   ): Promise<{ output: unknown; actionLabel?: string }> {
     switch (name) {
+      case 'find_person': {
+        const q = ((args.name as string) ?? '').trim();
+        if (!q) return { output: { error: 'No name given.' } };
+        const contacts = await this.prisma.contact.findMany({
+          where: { name: { contains: q, mode: 'insensitive' } },
+          take: 5,
+          orderBy: { updatedAt: 'desc' },
+          include: {
+            identities: { select: { channel: true, handle: true } },
+            enquiries: {
+              orderBy: { lastMessageAt: 'desc' }, take: 3,
+              select: { status: true, channel: true, programInterest: true, lastMessageAt: true },
+            },
+            leads: {
+              orderBy: { updatedAt: 'desc' }, take: 3,
+              select: { temperature: true, nextAction: true, nextActionDate: true, stage: { select: { label: true } } },
+            },
+            conversations: {
+              orderBy: { updatedAt: 'desc' }, take: 1,
+              select: {
+                channel: true, handoverToHuman: true,
+                messages: { orderBy: { occurredAt: 'desc' }, take: 1, select: { body: true, direction: true } },
+              },
+            },
+          },
+        });
+        if (!contacts.length) return { output: { found: false, message: `No one found matching "${q}".` } };
+        return {
+          output: contacts.map((c) => ({
+            name: c.name,
+            country: c.country,
+            language: c.language,
+            email: c.identities.find((i) => i.channel === 'EMAIL')?.handle ?? null,
+            phone: c.identities.find((i) => i.channel === 'WHATSAPP' || i.channel === 'PHONE')?.handle ?? null,
+            enquiries: c.enquiries.map((e) => ({ status: e.status, channel: e.channel, programInterest: e.programInterest, lastMessageAt: e.lastMessageAt })),
+            isLead: c.leads.length > 0,
+            leads: c.leads.map((l) => ({ stage: l.stage.label, temperature: l.temperature, nextAction: l.nextAction, nextActionDate: l.nextActionDate })),
+            lastConversation: c.conversations[0]
+              ? { channel: c.conversations[0].channel, withHuman: c.conversations[0].handoverToHuman, lastMessage: c.conversations[0].messages[0]?.body ?? null, lastFrom: c.conversations[0].messages[0]?.direction ?? null }
+              : null,
+          })),
+        };
+      }
       case 'search_leads': {
         const res = await this.leads.list({
           view: (args.view as 'active') ?? 'active',
