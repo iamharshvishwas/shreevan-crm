@@ -8,6 +8,8 @@ export interface SessionUser {
   id: string;
   email: string;
   role: string;
+  /** Admin-assigned free-text display title (from /users/me). */
+  title?: string;
   /** Per-user screen access, fetched fresh from /users/me. Undefined until the
    *  fetch resolves; empty array = no screens (non-admin with nothing granted). */
   allowedScreens?: ScreenKey[];

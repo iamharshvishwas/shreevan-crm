@@ -183,7 +183,13 @@ model User {
   email        String   @unique
   passwordHash String
   name         String
+  // ADMIN bypasses all access checks; every non-admin is a plain member whose
+  // access is defined entirely by allowedScreens. The other legacy enum values
+  // (MARKETING/OPERATIONS) no longer gate anything.
   role         Role     @default(RELATIONSHIP)
+  // Free-text display title the admin assigns (e.g. "Relationship Manager").
+  // Purely cosmetic — access is controlled by role (admin) + allowedScreens.
+  title        String   @default("")
   // Per-user CRM screen access (frontend nav + backend ScreensGuard). Empty for
   // ADMIN, who bypasses screen checks entirely. Values are frontend ScreenKeys.
   allowedScreens String[] @default([])
