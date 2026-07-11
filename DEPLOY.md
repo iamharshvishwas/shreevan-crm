@@ -105,14 +105,14 @@ Open your Vercel URL and sign in:
 - **Email:** `harsh@shreevanwellness.com` (the admin)
 - **Password:** `changeme123`
 
-Other seeded users: `tushar@…` (marketing), `isha@…` (relationship) — same password.
+The seed only creates this one admin. Add teammates from **Settings → Team & roles** once logged in — invite with a real name, title and screen access, no need to touch the seed script.
 
 ---
 
 ## After deploy — good to know
 
 - **Future updates:** `git push` → both Vercel and Railway redeploy automatically.
-- **Change the demo password:** there's no in-app password change yet. To rotate, edit the password in `server/prisma/seed.ts` and re-run Step 3, or add a change-password endpoint later.
+- **Change the seed password immediately:** log in, then use **Settings → Your account → Change password** (and enable 2FA while you're there). This is a real login on a public URL — don't leave it on `changeme123`.
 - **Custom domain:** add it in Vercel (web) and/or Railway (API); then update `VITE_API_URL` / `CORS_ORIGIN` to match.
 - **`ENABLE_SIMULATION=false`** is important in production — it disables the dev-only fake-inbound tooling.
 - **Channel integrations (WhatsApp/Instagram/Email)** stay simulated until you add real provider credentials — those env vars are listed in `server/.env.example`.

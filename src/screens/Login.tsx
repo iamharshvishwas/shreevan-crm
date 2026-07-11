@@ -24,7 +24,7 @@ const labelStyle = {
 } as const;
 
 export function Login({ auth }: { auth: AuthStore }) {
-  const [email, setEmail] = useState('isha@shreevanwellness.com');
+  const [email, setEmail] = useState(import.meta.env.DEV ? 'harsh@shreevanwellness.com' : '');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -224,9 +224,9 @@ export function Login({ auth }: { auth: AuthStore }) {
           </form>
         )}
 
-        {!challengeToken && (
+        {!challengeToken && import.meta.env.DEV && (
           <p style={{ margin: '18px 0 0 0', fontSize: 11.5, color: 'var(--sw-stone-600)', textAlign: 'center', lineHeight: 1.5 }}>
-            Dev: isha@shreevanwellness.com / changeme123
+            Dev: harsh@shreevanwellness.com / changeme123
           </p>
         )}
       </div>
