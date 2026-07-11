@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsBoolean, IsEmail, IsEnum, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { Role } from '@prisma/client';
@@ -85,5 +85,12 @@ export class UsersController {
   @Roles(Role.ADMIN)
   setPassword(@Param('id') id: string, @Body() dto: SetPasswordDto, @CurrentUser() actor: AuthUser) {
     return this.users.adminSetPassword(id, dto.password, actor.id);
+  }
+
+  /** Admin permanently removes a deactivated user. */
+  @Delete(':id')
+  @Roles(Role.ADMIN)
+  remove(@Param('id') id: string, @CurrentUser() actor: AuthUser) {
+    return this.users.remove(id, actor.id);
   }
 }
