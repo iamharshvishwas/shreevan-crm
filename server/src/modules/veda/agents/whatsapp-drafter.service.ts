@@ -106,4 +106,81 @@ export class WhatsAppDrafterService {
       });
     }
   }
+
+  /** Draft a program-info WhatsApp for a live-chat visitor (no Lead yet — an
+   *  Enquiry is enough) and queue it for approval. Returns synchronously
+   *  whether it was actually queued, so a caller mid-conversation (Veda chat)
+   *  can tell the visitor the truth instead of assuming success. */
+  async draftForEnquiry(enquiryId: string, angle?: string): Promise<{ queued: boolean; reason?: string }> {
+    const started = Date.now();
+    if (!this.ai.isConfigured()) return { queued: false, reason: 'Veda is not connected to an AI provider.' };
+
+    const enquiry = await this.prisma.enquiry.findUnique({
+      where: { id: enquiryId },
+      include: { contact: { include: { identities: true } } },
+    });
+    if (!enquiry) return { queued: false, reason: 'Enquiry not found.' };
+
+    const wa = enquiry.contact.identities.find((i) => i.channel === Channel.WHATSAPP);
+    if (!wa) {
+      await this.logs.write({ type: 'SEND_WHATSAPP', status: 'SKIPPED', entityType: 'Enquiry', entityId: enquiryId, error: 'No WhatsApp number on contact.' });
+      return { queued: false, reason: 'No WhatsApp number on file yet.' };
+    }
+
+    const prompt = [
+      `Client name: ${enquiry.contact.name}`,
+      enquiry.contact.language ? `Preferred language: ${enquiry.contact.language}` : '',
+      enquiry.programInterest ? `Program interest: ${enquiry.programInterest}` : 'Program interest: not yet known',
+      angle ?? 'They asked Veda for program details during a live chat.',
+    ].filter(Boolean).join('\n');
+
+    try {
+      const result = await this.ai.chat({
+        jsonMode: true,
+        temperature: 0.7,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+      });
+      const draft = this.ai.parseJson<{ message: string }>(result.message.content);
+      if (!draft.message) throw new Error('AI returned an empty message.');
+
+      const slots = proposeSlots(3);
+      const autoApprove = (await this.config.get()).steps.SEND_WHATSAPP.autoApprove;
+
+      const approval = await this.approvals.create({
+        type: 'SEND_WHATSAPP',
+        entityType: 'Enquiry',
+        entityId: enquiryId,
+        draftText: `WhatsApp to ${enquiry.contact.name} (${wa.handle}): "${draft.message}" + ${slots.length} call slots`,
+        payload: { to: wa.handle, contactId: enquiry.contactId, body: draft.message, slots },
+        context: { reasoning: 'Requested by the visitor in live chat', language: enquiry.contact.language ?? 'auto' },
+        expiresInHours: 48,
+      });
+
+      if (autoApprove) {
+        await this.approvals.approve(approval.id, 'veda-auto', 'Auto-approved by config');
+      }
+
+      await this.logs.write({
+        type: 'SEND_WHATSAPP',
+        status: autoApprove ? 'QUEUED' : 'COMPLETED',
+        entityType: 'Enquiry',
+        entityId: enquiryId,
+        approvalId: approval.id,
+        output: { autoApprove, slots: slots.length } as object,
+        costUsdMicro: result.costUsdMicro,
+        durationMs: Date.now() - started,
+        completedAt: new Date(),
+      });
+      return { queued: true };
+    } catch (e) {
+      await this.logs.write({
+        type: 'SEND_WHATSAPP', status: 'FAILED', entityType: 'Enquiry', entityId: enquiryId,
+        error: (e as Error).message, durationMs: Date.now() - started,
+      });
+      return { queued: false, reason: 'Something went wrong drafting the WhatsApp message.' };
+    }
+  }
 }
