@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import type { Response } from 'express';
 import { Channel, ConnectionStatus, DeliveryState, MessageDirection } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
+import { extractContactFromText } from '../../contacts/identity.util';
 import { IngestionService } from '../../enquiries/ingestion.service';
 import { NormalizedInboundEvent } from '../../enquiries/dto/inbound-event.dto';
 import { VedaChatService } from '../agents/veda-chat.service';
@@ -60,6 +61,12 @@ export class ChatController {
   async message(@Body() dto: ChatMessageDto): Promise<{ reply: string; conversationId?: string; handover?: boolean }> {
     const connectionId = await this.getConnectionId();
 
+    // The widget's pre-chat form is optional, and Veda's own prompt asks
+    // visitors to share contact details conversationally — fall back to
+    // picking an email/phone out of the message text itself so those replies
+    // aren't lost (this feeds the same enrichContact() pipeline as the form).
+    const extracted = extractContactFromText(dto.message);
+
     const ev: NormalizedInboundEvent = {
       provider: Channel.WEBSITE_CHAT,
       connectionId,
@@ -70,8 +77,8 @@ export class ChatController {
       sender: {
         providerIdentityId: dto.sessionId,
         displayName: dto.name?.trim() || 'Website visitor',
-        email: dto.email?.trim() || null,
-        phone: dto.phone?.trim() || null,
+        email: dto.email?.trim() || extracted.email,
+        phone: dto.phone?.trim() || extracted.phone,
       },
       message: { type: 'text', text: dto.message },
       attribution: { firstTouchSource: Channel.WEBSITE_CHAT, campaign: null },

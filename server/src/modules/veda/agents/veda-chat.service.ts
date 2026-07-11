@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { DeliveryState, MessageDirection } from '@prisma/client';
+import { Channel, DeliveryState, MessageDirection } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { OpenAiProvider, type ChatMessage } from '../ai/openai.provider';
 import { VedaConfigService } from '../veda-config.service';
@@ -38,7 +38,7 @@ export class VedaChatService {
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
       include: {
-        contact: true,
+        contact: { include: { identities: true } },
         messages: { orderBy: { occurredAt: 'desc' }, take: HISTORY_LIMIT },
       },
     });
@@ -54,7 +54,7 @@ export class VedaChatService {
 
     try {
       const kb = await this.knowledge.retrieve(last?.body ?? '', 5).catch(() => []);
-      const system = await this.systemPrompt(conversation.contact?.name, conversation.channel, kb);
+      const system = await this.systemPrompt(conversation.contact?.name, conversation.contact?.identities, conversation.channel, kb);
       const history: ChatMessage[] = ordered.map((m) => ({
         role: m.direction === MessageDirection.INBOUND ? 'user' : 'assistant',
         content: m.body,
@@ -106,10 +106,16 @@ export class VedaChatService {
 
   private async systemPrompt(
     contactName?: string | null,
+    identities?: { channel: Channel; handle: string }[],
     channel?: string,
     knowledge: { title: string; content: string }[] = [],
   ): Promise<string> {
     const isEmail = channel === 'EMAIL';
+    const knownEmail = identities?.find((i) => i.channel === Channel.EMAIL)?.handle;
+    const knownPhone = identities?.find((i) => i.channel === Channel.WHATSAPP)?.handle;
+    const knownDetailsBlock = knownEmail || knownPhone
+      ? `\n\nDETAILS ALREADY ON FILE for this guest — do NOT ask for these again, and use them (don't just say you "will pass it to the team", actually reference them) when confirming a follow-up: ${[knownEmail && `email ${knownEmail}`, knownPhone && `WhatsApp ${knownPhone}`].filter(Boolean).join(', ')}.`
+      : '';
     const kbBlock = knowledge.length
       ? `\n\nRELEVANT KNOWLEDGE (use this to answer accurately; if it doesn't cover the question, say you'll have the team confirm):\n${knowledge.map((k) => `• ${k.title}: ${k.content}`).join('\n')}`
       : '';
@@ -137,7 +143,7 @@ STYLE:
       ? 'This is an EMAIL reply: write 2-3 short paragraphs, greet by name if known, and sign off as "Warm regards,\\nVeda · Shreevan Wellness". Do not include a subject line.'
       : 'This is a live chat, so keep replies short (1-4 sentences). A light 🌿 occasionally is fine.'}
 
-${VEDA_OPERATING_RULES}${kbBlock}`;
+${VEDA_OPERATING_RULES}${knownDetailsBlock}${kbBlock}`;
   }
 }
 
