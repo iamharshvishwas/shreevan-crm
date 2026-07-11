@@ -1,14 +1,33 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Channel, DeliveryState, MessageDirection } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
-import { OpenAiProvider, type ChatMessage } from '../ai/openai.provider';
+import { OpenAiProvider, type ChatMessage, type ToolDef } from '../ai/openai.provider';
 import { VedaConfigService } from '../veda-config.service';
 import { VedaLogService } from '../veda-log.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { VedaLearningService } from './veda-learning.service';
+import { EmailDrafterService } from './email-drafter.service';
+import { WhatsAppDrafterService } from './whatsapp-drafter.service';
 import { VEDA_OPERATING_RULES } from '../veda-operating-rules';
 
 const HISTORY_LIMIT = 16;
+
+const CHAT_TOOLS: ToolDef[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'queue_program_details',
+      description: 'Queue sending the guest program details (name, duration, pricing) by email or WhatsApp, for a team member to review and send. Call this ONLY when the guest explicitly asks you to send/share details to their email or WhatsApp/number, and you already have that contact on file.',
+      parameters: {
+        type: 'object',
+        properties: {
+          channel: { type: 'string', enum: ['EMAIL', 'WHATSAPP'], description: 'Which channel the guest asked for.' },
+        },
+        required: ['channel'],
+      },
+    },
+  },
+];
 
 @Injectable()
 export class VedaChatService {
@@ -21,6 +40,8 @@ export class VedaChatService {
     private readonly logs: VedaLogService,
     private readonly knowledge: KnowledgeService,
     private readonly learning: VedaLearningService,
+    private readonly emailDrafter: EmailDrafterService,
+    private readonly whatsappDrafter: WhatsAppDrafterService,
   ) {}
 
   /**
@@ -59,11 +80,24 @@ export class VedaChatService {
         role: m.direction === MessageDirection.INBOUND ? 'user' : 'assistant',
         content: m.body,
       }));
+      const messages: ChatMessage[] = [{ role: 'system', content: system }, ...history];
 
-      const result = await this.ai.chat({
-        temperature: 0.6,
-        messages: [{ role: 'system', content: system }, ...history],
-      });
+      let result = await this.ai.chat({ temperature: 0.6, messages, tools: CHAT_TOOLS });
+      let totalCost = result.costUsdMicro;
+
+      // If Veda asked to queue a send, run it, feed the (truthful) outcome back,
+      // and let it compose the actual reply on a second pass — so it never
+      // claims something happened that didn't.
+      if (result.message.tool_calls?.length) {
+        messages.push(result.message);
+        for (const call of result.message.tool_calls) {
+          const output = await this.runChatTool(call.function.name, call.function.arguments, conversation.enquiryId);
+          messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(output) });
+        }
+        result = await this.ai.chat({ temperature: 0.6, messages });
+        totalCost += result.costUsdMicro;
+      }
+
       const reply = (result.message.content ?? '').trim();
       if (!reply) return { reply: null };
 
@@ -88,7 +122,7 @@ export class VedaChatService {
       await this.logs.write({
         type: 'CHAT_REPLY', status: 'COMPLETED', entityType: 'Conversation', entityId: conversationId,
         output: { channel: conversation.channel } as object,
-        costUsdMicro: result.costUsdMicro, durationMs: Date.now() - started, completedAt: new Date(),
+        costUsdMicro: totalCost, durationMs: Date.now() - started, completedAt: new Date(),
       });
 
       // Self-learning: note questions Veda could not confidently answer.
@@ -102,6 +136,23 @@ export class VedaChatService {
       });
       return { reply: null };
     }
+  }
+
+  /** Executes a tool Veda called mid-chat. Respects the same admin on/off
+   *  switches (Settings → Veda) that gate the Lead nurture drafters. */
+  private async runChatTool(name: string, rawArgs: string, enquiryId: string | null): Promise<{ queued: boolean; reason?: string }> {
+    if (name !== 'queue_program_details') return { queued: false, reason: `Unknown tool ${name}` };
+    if (!enquiryId) return { queued: false, reason: 'No enquiry on this conversation yet.' };
+
+    const args = safeParseJson(rawArgs);
+    const channel = args.channel === 'WHATSAPP' ? 'WHATSAPP' : 'EMAIL';
+
+    if (channel === 'EMAIL') {
+      if (!(await this.config.isStepEnabled('SEND_EMAIL'))) return { queued: false, reason: 'Email sending is currently turned off by the team.' };
+      return this.emailDrafter.draftForEnquiry(enquiryId);
+    }
+    if (!(await this.config.isStepEnabled('SEND_WHATSAPP'))) return { queued: false, reason: 'WhatsApp sending is currently turned off by the team.' };
+    return this.whatsappDrafter.draftForEnquiry(enquiryId);
   }
 
   private async systemPrompt(
@@ -136,6 +187,7 @@ ${programList}
 YOUR GOAL:
 - Warmly welcome them, understand what they're looking for, and answer questions about our retreats at a high level.
 - Naturally guide them toward booking a short discovery call with our team. Offer to take their name and a good time/number, or invite them to share it.
+- If they ask you to send/share program details on their email or WhatsApp, call the queue_program_details tool (needs that contact on file — check DETAILS ALREADY ON FILE below, or ask for it first if it's missing). Tell them the truth about what the tool reports back — if it queued, say a team member will send it shortly; if it couldn't (e.g. no contact on file), say so plainly instead of claiming it's done.
 
 STYLE:
 - Reply in the guest's language — Hindi, English, or Hinglish — matching how they write.
@@ -162,4 +214,8 @@ function detectAttention(userText: string, vedaReply: string): string | null {
     return 'Veda was unsure / deferred to the team';
   }
   return null;
+}
+
+function safeParseJson(s: string): Record<string, unknown> {
+  try { return JSON.parse(s) as Record<string, unknown>; } catch { return {}; }
 }

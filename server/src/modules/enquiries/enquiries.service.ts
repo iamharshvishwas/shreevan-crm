@@ -46,9 +46,11 @@ export class EnquiriesService {
       where.status = { in: [EnquiryStatus.NEEDS_REPLY, EnquiryStatus.WAITING_FOR_CUSTOMER] };
     } else where.status = { not: EnquiryStatus.SPAM };
 
-    // Website live chats live in the dedicated Live Chat tab, not Enquiries.
-    if (dto.channel && dto.channel !== Channel.WEBSITE_CHAT) where.channel = dto.channel;
-    else where.channel = { not: Channel.WEBSITE_CHAT };
+    // Website live chats also show here now — a visitor who shares contact
+    // details needs the same manual "Convert to lead" path every other
+    // channel gets. They're still visible/repliable from the dedicated Live
+    // Chat tab too; this doesn't move them, it just stops hiding them here.
+    if (dto.channel) where.channel = dto.channel;
     if (dto.ownerId) where.ownerId = dto.ownerId;
     if (dto.priority) where.priority = dto.priority;
     if (dto.q) {
