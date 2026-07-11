@@ -4,7 +4,7 @@ import * as argon2 from 'argon2';
 import { PrismaService } from '../../database/prisma.service';
 import { ConflictError, ForbiddenError, NotFoundError } from '../../common/errors/domain.errors';
 
-const SAFE = { id: true, name: true, email: true, role: true, isActive: true, allowedScreens: true } as const;
+const SAFE = { id: true, name: true, email: true, role: true, title: true, isActive: true, allowedScreens: true } as const;
 
 @Injectable()
 export class UsersService {
@@ -40,7 +40,7 @@ export class UsersService {
   }
 
   async create(
-    input: { email: string; name: string; password: string; role: Role; allowedScreens?: string[] },
+    input: { email: string; name: string; password: string; role: Role; title?: string; allowedScreens?: string[] },
     actorId?: string,
   ) {
     const existing = await this.findByEmail(input.email);
@@ -50,6 +50,7 @@ export class UsersService {
         email: input.email.toLowerCase(),
         name: input.name,
         role: input.role,
+        title: input.title ?? '',
         allowedScreens: input.allowedScreens ?? [],
         passwordHash: await argon2.hash(input.password),
       },
@@ -64,6 +65,15 @@ export class UsersService {
     if (!user) throw new NotFoundError('User', id);
     const updated = await this.prisma.user.update({ where: { id }, data: { allowedScreens }, select: SAFE });
     await this.audit(actorId, 'USER_SCREENS_CHANGED', id, { from: user.allowedScreens, to: allowedScreens });
+    return updated;
+  }
+
+  /** Admin sets a user's free-text display title (e.g. "Relationship Manager"). */
+  async setTitle(id: string, title: string, actorId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundError('User', id);
+    const updated = await this.prisma.user.update({ where: { id }, data: { title }, select: SAFE });
+    await this.audit(actorId, 'USER_TITLE_CHANGED', id, { from: user.title, to: title });
     return updated;
   }
 

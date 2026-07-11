@@ -8,15 +8,15 @@ import {
 import { Callout, PasswordInput } from '../components/ui';
 import { CHANNEL_LABEL } from '../api/enquiries';
 import {
-  ROLES, ROLE_LABEL, isAdmin, useManageUsers, useUsers, usersApi,
+  isAdmin, roleLabel, useManageUsers, useUsers, usersApi,
   type ManageUser, type NewUser, type Role,
 } from '../api/users';
 import { useStages } from '../api/leads';
 import { CONN_STATUS, useChannels, useRoutingRules, useSlaPolicies } from '../api/settings';
 import { SCREENS, type ScreenKey } from '../types';
 
-const ROLE_TAG: Record<Role, string> = { ADMIN: 'Admin', RELATIONSHIP: 'Member', MARKETING: 'Member', OPERATIONS: 'Member' };
-const ROLE_BG: Record<Role, string> = { ADMIN: 'var(--sw-forest-900)', RELATIONSHIP: 'var(--sw-gold-500)', MARKETING: 'var(--sw-moss-600)', OPERATIONS: 'var(--sw-river-600)' };
+// Avatar background: admins get the deep forest, everyone else a neutral member tone.
+const avatarBg = (role: string) => (role === 'ADMIN' ? 'var(--sw-forest-900)' : 'var(--sw-gold-500)');
 
 const NOTIF_PREFS = [
   { label: 'New enquiry received', checked: true },
@@ -384,8 +384,8 @@ function TwoFactorCard({ app }: { app: AppStore }) {
 
 /* ---------------- Team cards ---------------- */
 
-function RoleBadge({ role }: { role: Role }) {
-  return <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', background: 'var(--sw-mist-100)', color: 'var(--sw-forest-700)', padding: '3px 10px', borderRadius: 6 }}>{ROLE_TAG[role]}</span>;
+function RoleBadge({ user }: { user: { role: Role; title?: string } }) {
+  return <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', background: 'var(--sw-mist-100)', color: 'var(--sw-forest-700)', padding: '3px 10px', borderRadius: 6 }}>{roleLabel(user)}</span>;
 }
 
 function ReadonlyTeam() {
@@ -396,17 +396,17 @@ function ReadonlyTeam() {
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {users.map((u, i) => (
           <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', borderBottom: i < users.length - 1 ? '1px solid var(--sw-mist-100)' : 'none' }}>
-            <span style={{ width: 34, height: 34, borderRadius: '50%', background: ROLE_BG[u.role], color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11.5, fontWeight: 700 }}>{initials(u.name)}</span>
+            <span style={{ width: 34, height: 34, borderRadius: '50%', background: avatarBg(u.role), color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11.5, fontWeight: 700 }}>{initials(u.name)}</span>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13.5, fontWeight: 600 }}>{u.name}</div>
-              <div style={{ fontSize: 12, color: 'var(--sw-stone-600)' }}>{ROLE_LABEL[u.role]}</div>
+              <div style={{ fontSize: 12, color: 'var(--sw-stone-600)' }}>{roleLabel(u)}</div>
             </div>
-            <RoleBadge role={u.role} />
+            <RoleBadge user={u} />
           </div>
         ))}
         {users.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--sw-stone-600)' }}>Loading team…</div>}
       </div>
-      <p style={{ margin: '12px 0 0 0', fontSize: 11.5, color: 'var(--sw-stone-600)' }}>Only an admin can change roles or invite teammates.</p>
+      <p style={{ margin: '12px 0 0 0', fontSize: 11.5, color: 'var(--sw-stone-600)' }}>Only an admin can invite teammates or change access.</p>
     </section>
   );
 }
@@ -430,7 +430,8 @@ function ScreenPicker({ value, onChange }: { value: ScreenKey[]; onChange: (next
 function AdminTeam({ app }: { app: AppStore }) {
   const { users, reload } = useManageUsers();
   const [inviting, setInviting] = useState(false);
-  const [form, setForm] = useState<NewUser>({ email: '', name: '', role: 'RELATIONSHIP', password: '', allowedScreens: [] });
+  const emptyForm: NewUser = { email: '', name: '', role: 'RELATIONSHIP', title: '', password: '', allowedScreens: [] };
+  const [form, setForm] = useState<NewUser>(emptyForm);
   const [editingAccess, setEditingAccess] = useState<string | null>(null);
 
   async function run(fn: () => Promise<unknown>, ok: string) {
@@ -439,9 +440,9 @@ function AdminTeam({ app }: { app: AppStore }) {
   }
 
   async function invite() {
-    if (!form.email.trim() || !form.name.trim() || form.password.length < 8) { app.showToastMsg('Name, email and an 8+ char password are required.'); return; }
+    if (!form.email.trim() || !form.name.trim() || form.password.length < 10) { app.showToastMsg('Name, email and a 10+ char password (incl. a number) are required.'); return; }
     await run(() => usersApi.create(form), `${form.name} added to the team.`);
-    setForm({ email: '', name: '', role: 'RELATIONSHIP', password: '', allowedScreens: [] });
+    setForm(emptyForm);
     setInviting(false);
   }
 
@@ -458,15 +459,21 @@ function AdminTeam({ app }: { app: AppStore }) {
         <div style={{ background: 'var(--sw-sand-050)', border: '1px solid var(--sw-line-soft)', borderRadius: 10, padding: 14, marginBottom: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Full name" style={inputStyle} />
           <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Email" type="email" style={inputStyle} />
-          <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })} style={{ ...inputStyle, cursor: 'pointer' }}>
-            {ROLES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
-          </select>
+          <input value={form.title ?? ''} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Role / title (e.g. Relationship Manager)" style={inputStyle} />
           <input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Temporary password (10+ chars, incl. a number)" type="text" style={inputStyle} />
+          <label style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, cursor: 'pointer', color: 'var(--sw-ink-900)' }}>
+            <input type="checkbox" checked={form.role === 'ADMIN'} onChange={(e) => setForm({ ...form, role: e.target.checked ? 'ADMIN' : 'RELATIONSHIP' })} style={{ cursor: 'pointer' }} />
+            Admin (full access to every screen)
+          </label>
           <div style={{ gridColumn: '1 / -1' }}>
             <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--sw-stone-600)', marginBottom: 8 }}>
               Screen access {form.role === 'ADMIN' && '(admins see everything)'}
             </div>
-            <ScreenPicker value={form.allowedScreens ?? []} onChange={(next) => setForm({ ...form, allowedScreens: next })} />
+            {form.role === 'ADMIN' ? (
+              <div style={{ fontSize: 12.5, color: 'var(--sw-stone-600)' }}>Admins have access to every screen — nothing to configure.</div>
+            ) : (
+              <ScreenPicker value={form.allowedScreens ?? []} onChange={(next) => setForm({ ...form, allowedScreens: next })} />
+            )}
           </div>
           <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end' }}>
             <button onClick={invite} className="hov-forest-deep" style={{ height: 34, padding: '0 18px', borderRadius: 999, border: '1px solid var(--sw-forest-900)', background: 'var(--sw-forest-900)', color: '#fff', fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Add teammate</button>
@@ -478,20 +485,32 @@ function AdminTeam({ app }: { app: AppStore }) {
         {users.map((u: ManageUser, i) => (
           <div key={u.id} style={{ borderBottom: i < users.length - 1 ? '1px solid var(--sw-mist-100)' : 'none', opacity: u.isActive ? 1 : 0.55 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0' }}>
-              <span style={{ width: 34, height: 34, borderRadius: '50%', background: ROLE_BG[u.role], color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11.5, fontWeight: 700, flexShrink: 0 }}>{initials(u.name)}</span>
+              <span style={{ width: 34, height: 34, borderRadius: '50%', background: avatarBg(u.role), color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11.5, fontWeight: 700, flexShrink: 0 }}>{initials(u.name)}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}{!u.isActive && <span style={{ fontSize: 11, color: 'var(--sw-stone-600)', fontWeight: 400 }}> · disabled</span>}</div>
                 <div style={{ fontSize: 12, color: 'var(--sw-stone-600)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.email}</div>
               </div>
+              {u.role === 'ADMIN' ? (
+                <span style={{ height: 32, display: 'inline-flex', alignItems: 'center', padding: '0 12px', fontSize: 12.5, fontWeight: 600, color: 'var(--sw-forest-700)', flexShrink: 0 }}>Admin</span>
+              ) : (
+                <input
+                  key={`title-${u.id}-${u.title}`}
+                  defaultValue={u.title}
+                  placeholder="Role / title"
+                  onBlur={(e) => { const v = e.target.value.trim(); if (v !== (u.title ?? '')) run(() => usersApi.setTitle(u.id, v), `Updated ${u.name}'s title.`); }}
+                  style={{ height: 32, width: 160, border: '1px solid var(--sw-line-soft)', borderRadius: 8, background: '#fff', fontFamily: 'var(--font-body)', fontSize: 12.5, color: 'var(--sw-ink-900)', padding: '0 10px', flexShrink: 0 }}
+                />
+              )}
               <button onClick={() => setEditingAccess((cur) => (cur === u.id ? null : u.id))} className="hov-mist"
                 title={u.role === 'ADMIN' ? 'Admins see every screen' : `${u.allowedScreens.length} screens`}
                 style={{ height: 32, padding: '0 12px', borderRadius: 999, border: '1px solid var(--sw-line-soft)', background: editingAccess === u.id ? 'var(--sw-mist-100)' : '#fff', color: 'var(--sw-forest-900)', fontFamily: 'var(--font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
                 {u.role === 'ADMIN' ? 'All access' : `Access · ${u.allowedScreens.length}`}
               </button>
-              <select value={u.role} onChange={(e) => run(() => usersApi.updateRole(u.id, e.target.value as Role), `${u.name} is now ${ROLE_LABEL[e.target.value as Role]}.`)}
-                style={{ height: 32, border: '1px solid var(--sw-line-soft)', borderRadius: 8, background: '#fff', fontFamily: 'var(--font-body)', fontSize: 12.5, fontWeight: 600, color: 'var(--sw-ink-900)', padding: '0 8px', cursor: 'pointer', flexShrink: 0 }}>
-                {ROLES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
-              </select>
+              <button onClick={() => run(() => usersApi.updateRole(u.id, u.role === 'ADMIN' ? 'RELATIONSHIP' : 'ADMIN'), `${u.name} is now ${u.role === 'ADMIN' ? 'a member' : 'an admin'}.`)} className="hov-mist"
+                title={u.role === 'ADMIN' ? 'Remove admin (make a member)' : 'Make admin (full access)'}
+                style={{ height: 32, padding: '0 12px', borderRadius: 999, border: '1px solid var(--sw-forest-900)', background: u.role === 'ADMIN' ? 'var(--sw-forest-900)' : '#fff', color: u.role === 'ADMIN' ? '#fff' : 'var(--sw-forest-900)', fontFamily: 'var(--font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                {u.role === 'ADMIN' ? 'Admin ✓' : 'Make admin'}
+              </button>
               <button onClick={() => run(() => usersApi.setActive(u.id, !u.isActive), `${u.name} ${u.isActive ? 'deactivated' : 'reactivated'}.`)} className="hov-mist"
                 style={{ height: 32, padding: '0 12px', borderRadius: 999, border: '1px solid var(--sw-line-soft)', background: '#fff', color: u.isActive ? 'var(--sw-error)' : 'var(--sw-forest-900)', fontFamily: 'var(--font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
                 {u.isActive ? 'Deactivate' : 'Reactivate'}

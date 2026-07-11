@@ -6,13 +6,6 @@ import { initials } from '../data';
 import { useActionableCount } from '../api/enquiries';
 import { CollapseIcon, Ic } from './icons';
 
-const ROLE_LABEL: Record<string, string> = {
-  ADMIN: 'Founder · admin',
-  RELATIONSHIP: 'Relationship manager',
-  MARKETING: 'Marketing manager',
-  OPERATIONS: 'Operations manager',
-};
-
 const NAV: { key: ScreenKey; label: string; icon: JSX.Element; adminOnly?: boolean }[] = [
   { key: 'overview', label: 'Overview', icon: <Ic parts={[{ r: [3, 3, 7, 9, 1.5] }, { r: [14, 3, 7, 5, 1.5] }, { r: [14, 12, 7, 9, 1.5] }, { r: [3, 16, 7, 5, 1.5] }]} /> },
   { key: 'enquiries', label: 'Enquiries', icon: <Ic parts={['M22 12h-6l-2 3h-4l-2-3H2', 'M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z']} /> },
@@ -33,7 +26,8 @@ export function Sidebar({ app, auth }: { app: AppStore; auth: AuthStore }) {
   const collapsed = app.sidebarCollapsed;
   const hideLabel = collapsed ? { display: 'none' as const } : {};
   const name = auth.user?.email.split('@')[0].replace(/\./g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) ?? 'User';
-  const roleLabel = ROLE_LABEL[auth.user?.role ?? ''] ?? 'Team member';
+  const roleLabel =
+    auth.user?.role === 'ADMIN' ? 'Admin' : (auth.user?.title?.trim() || 'Team member');
   const { count: enquiryBadge } = useActionableCount();
 
   return (

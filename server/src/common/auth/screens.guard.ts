@@ -41,14 +41,17 @@ export class ScreensGuard implements CanActivate {
     const req = ctx.switchToHttp().getRequest<Request & { user?: AuthUser }>();
     const user = req.user;
     if (!user) throw new ForbiddenError();
-    if (user.role === Role.ADMIN) return true;
 
+    // Read role + screens fresh from the DB (not the JWT) so admin promote/
+    // demote and screen changes all take effect immediately, without a re-login.
     const row = await this.prisma.user.findUnique({
       where: { id: user.id },
-      select: { allowedScreens: true },
+      select: { role: true, allowedScreens: true },
     });
-    const allowed = row?.allowedScreens ?? [];
-    if (!required.some((screen) => allowed.includes(screen))) throw new ForbiddenError();
+    if (!row) throw new ForbiddenError();
+    if (row.role === Role.ADMIN) return true;
+
+    if (!required.some((screen) => row.allowedScreens.includes(screen))) throw new ForbiddenError();
     return true;
   }
 }

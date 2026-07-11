@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsEmail, IsEnum, IsIn, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsEmail, IsEnum, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { Role } from '@prisma/client';
 import { UsersService } from './users.service';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
@@ -12,6 +12,7 @@ class CreateUserDto {
   @IsEmail() email!: string;
   @IsString() name!: string;
   @IsEnum(Role) role!: Role;
+  @IsOptional() @IsString() @MaxLength(60) title?: string;
   @StrongPassword() password!: string;
   @IsOptional() @IsArray() @IsIn(SCREEN_KEYS, { each: true }) allowedScreens?: ScreenKey[];
 }
@@ -19,6 +20,7 @@ class UpdateRoleDto { @IsEnum(Role) role!: Role; }
 class SetActiveDto { @IsBoolean() isActive!: boolean; }
 class SetPasswordDto { @StrongPassword() password!: string; }
 class SetScreensDto { @IsArray() @IsIn(SCREEN_KEYS, { each: true }) allowedScreens!: ScreenKey[]; }
+class SetTitleDto { @IsString() @MaxLength(60) title!: string; }
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -68,6 +70,13 @@ export class UsersController {
   @Roles(Role.ADMIN)
   setScreens(@Param('id') id: string, @Body() dto: SetScreensDto, @CurrentUser() actor: AuthUser) {
     return this.users.setScreens(id, dto.allowedScreens, actor.id);
+  }
+
+  /** Admin sets a user's free-text display title. */
+  @Patch(':id/title')
+  @Roles(Role.ADMIN)
+  setTitle(@Param('id') id: string, @Body() dto: SetTitleDto, @CurrentUser() actor: AuthUser) {
+    return this.users.setTitle(id, dto.title, actor.id);
   }
 
   /** Admin resets a user's password (forgot-password for a small team). Revokes
