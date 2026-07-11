@@ -515,6 +515,13 @@ function AdminTeam({ app }: { app: AppStore }) {
                 style={{ height: 32, padding: '0 12px', borderRadius: 999, border: '1px solid var(--sw-line-soft)', background: '#fff', color: u.isActive ? 'var(--sw-error)' : 'var(--sw-forest-900)', fontFamily: 'var(--font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
                 {u.isActive ? 'Deactivate' : 'Reactivate'}
               </button>
+              {!u.isActive && (
+                <button onClick={() => { if (window.confirm(`Permanently remove ${u.name} from the CRM? Their leads/enquiries/tasks stay, just unassigned. This can't be undone.`)) run(() => usersApi.remove(u.id), `${u.name} removed from the CRM.`); }} className="hov-mist"
+                  title="Permanently delete this account"
+                  style={{ height: 32, padding: '0 12px', borderRadius: 999, border: '1px solid var(--sw-error)', background: '#fff', color: 'var(--sw-error)', fontFamily: 'var(--font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  Remove
+                </button>
+              )}
             </div>
             {editingAccess === u.id && (
               <div style={{ padding: '4px 0 16px 46px' }}>

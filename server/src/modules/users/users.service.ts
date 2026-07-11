@@ -101,6 +101,21 @@ export class UsersService {
     return updated;
   }
 
+  /** Permanently removes a deactivated user. Must be deactivated first (defense
+   *  in depth on top of the frontend gate) — prevents removing someone still
+   *  mid-shift by mistake. Owned enquiries/leads/tasks/calls survive with their
+   *  owner cleared (schema FKs are optional + SetNull); audit/history rows keep
+   *  the stale actor id, same as any departed employee's historical trail. */
+  async remove(id: string, actorId: string) {
+    if (id === actorId) throw new ForbiddenError('You cannot remove your own account.');
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundError('User', id);
+    if (user.isActive) throw new ConflictError('USER_ACTIVE', 'Deactivate this user before removing them.');
+    await this.prisma.user.delete({ where: { id } });
+    await this.audit(actorId, 'USER_REMOVED', id, { email: user.email, name: user.name, role: user.role });
+    return { ok: true };
+  }
+
   /** Admin sets a user's password (forgot-password recovery for a small team).
    *  Clears any lockout and revokes the user's sessions so the old password is dead. */
   async adminSetPassword(id: string, password: string, actorId: string) {

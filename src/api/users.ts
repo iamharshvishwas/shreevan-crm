@@ -38,6 +38,7 @@ export const usersApi = {
   setActive: (id: string, isActive: boolean) => api.patch<ManageUser>(`/users/${id}/active`, { isActive }),
   setScreens: (id: string, allowedScreens: ScreenKey[]) => api.patch<ManageUser>(`/users/${id}/screens`, { allowedScreens }),
   setTitle: (id: string, title: string) => api.patch<ManageUser>(`/users/${id}/title`, { title }),
+  remove: (id: string) => api.delete<{ ok: boolean }>(`/users/${id}`),
 };
 
 /** Current user's role (decoded from the access token) — gates admin-only UI. */
