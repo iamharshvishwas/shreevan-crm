@@ -267,15 +267,27 @@ Keep replies short and conversational; they will be read aloud. After taking an 
         return { output: filtered.slice(0, 10).map((t) => ({ title: t.title, due: t.dueAt, related: t.relatedName, bucket: t.bucket })) };
       }
       case 'create_task': {
-        const leadId = args.leadName ? (await this.findLeadByName(args.leadName as string))?.id : undefined;
+        // Link by lead first; a person who isn't a lead yet (e.g. a chat
+        // visitor) still gets linked via their contact — never silently dropped.
+        const name = args.leadName as string | undefined;
+        const leadId = name ? (await this.findLeadByName(name))?.id : undefined;
+        const contactId = name && !leadId
+          ? (await this.prisma.contact.findFirst({
+              where: { name: { contains: name, mode: 'insensitive' } },
+              orderBy: { updatedAt: 'desc' },
+              select: { id: true },
+            }))?.id
+          : undefined;
         await this.tasks.create({
           title: args.title as string,
           dueAt: args.dueDate ? new Date(args.dueDate as string).toISOString() : undefined,
           priority: (args.priority as 'HIGH' | 'NORMAL' | 'LOW') ?? 'NORMAL',
           ownerId: userId,
           leadId,
+          contactId,
         });
-        return { output: { ok: true }, actionLabel: `Created task: ${args.title}` };
+        const linkedTo = leadId ? 'lead' : contactId ? 'contact (not a lead yet)' : name ? 'nobody — no matching person found' : 'none requested';
+        return { output: { ok: true, linkedTo }, actionLabel: `Created task: ${args.title}` };
       }
       case 'set_lead_next_action': {
         const lead = await this.findLeadByName(args.leadName as string);
