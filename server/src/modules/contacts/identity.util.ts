@@ -3,9 +3,17 @@ import { Channel } from '@prisma/client';
 export const normalizeEmail = (e?: string | null): string =>
   e ? e.trim().toLowerCase() : '';
 
-/** Best-effort E.164-ish normalization: keep digits and a leading +, 00 → +. */
-export const normalizePhone = (p?: string | null): string =>
-  p ? p.replace(/[^\d+]/g, '').replace(/^00/, '+') : '';
+/** Best-effort E.164-ish normalization: keep digits and a leading +, 00 → +.
+ *  Bare Indian mobiles are canonicalized to +91 so the same person typing
+ *  "8755548899" and "+91 87555 48899" resolves to ONE identity — and so
+ *  WhatsApp sends always carry a country code (Meta rejects bare numbers). */
+export const normalizePhone = (p?: string | null): string => {
+  if (!p) return '';
+  const cleaned = p.replace(/[^\d+]/g, '').replace(/^00/, '+');
+  if (/^[6-9]\d{9}$/.test(cleaned)) return `+91${cleaned}`;   // 10-digit Indian mobile
+  if (/^91[6-9]\d{9}$/.test(cleaned)) return `+${cleaned}`;   // 91-prefixed, no +
+  return cleaned;
+};
 
 /** Normalized key used for the unique (channel, normalizedHandle) match. */
 export function normalizeHandle(channel: Channel, handle: string): string {
