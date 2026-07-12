@@ -285,11 +285,13 @@ function isPlaceholderName(name: string | null | undefined): boolean {
   return n === '' || n === 'website visitor' || n === 'unknown enquirer' || n === 'unknown';
 }
 
-/** Lightweight program-interest detection from the message text. */
+/** Lightweight program-interest detection from the message text. The number
+ *  must be day-context ("28 day", "28-day") — a bare "60" in "I am 60 years
+ *  old" or inside a phone number is NOT a program signal. */
 function detectProgram(text: string): string | undefined {
   const t = text.toLowerCase();
-  if (t.includes('60')) return '60-Day Integration Masterclass';
-  if (t.includes('14')) return '14-Day Foundations Program';
-  if (t.includes('28') || t.includes('reset')) return '28-Day Personal Reset';
+  if (/\b60[\s-]?day/.test(t)) return '60-Day Integration Masterclass';
+  if (/\b14[\s-]?day/.test(t)) return '14-Day Foundations Program';
+  if (/\b28[\s-]?day/.test(t) || t.includes('reset')) return '28-Day Personal Reset';
   return undefined;
 }
