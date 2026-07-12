@@ -113,22 +113,31 @@ conversation** — STATUS: CLOSED (dada29b)
 - Minimal fix: persist the fallback as an OUTBOUND authorName 'Veda' message
   when it is actually shown.
 
-### P3 (minor) — all DEFERRED with Harsh's sign-off ("P1+P2 fix karo")
+### P3 (minor) — later also approved; all CLOSED (2026-07-13)
 
-**V-B2 · detectProgram false positives** — `ingestion.service.ts:289-295`:
+**V-B2 · detectProgram false positives** — STATUS: CLOSED (8f325fd)
+- Post-fix: "I am 60 years old" → null; "the 28 day program" → 28-Day Personal
+  Reset; phone digits (9814600028) → null. Verified via live chat ingestion.
+- `ingestion.service.ts:289-295`:
 "I am 60 years old" → "60-Day Integration Masterclass"; any "28"/"14"/"60" in
 numbers/dates/phones matches. Minimal fix: require day-context
 (`/\b(60|28|14)[- ]?day/`) or program-name keywords.
 
-**V-D1 · Staff assistant task tools silently drop non-lead links** —
-`command.service.ts` create_task/set_lead_next_action/move_lead_stage resolve
+**V-D1 · Staff assistant task tools silently drop non-lead links** — STATUS: CLOSED (803a65a)
+- Post-fix: create_task for a non-lead contact links contactId and reports
+  linkedTo="contact (not a lead yet)" (verified via standalone-context
+  invocation of the tool executor). set_lead_next_action/move_lead_stage
+  already returned explicit errors — unchanged.
+- `command.service.ts` create_task/set_lead_next_action/move_lead_stage resolve
 names via findLeadByName (active LEADS only). "Naina ke liye task banao" for a
 chat-visitor → task created with no link, no warning. Minimal fix: fall back to
 contact match → link contactId; or tell the user it isn't linked.
 
-**V-B3 · Contact created outside the ingestion transaction** —
-`ingestion.service.ts` resolveContact() runs before $transaction — a failed
-ingest leaves an orphan contact. Cosmetic data noise; retry() reuses it fine.
+**V-B3 · Contact created outside the ingestion transaction** — STATUS: CLOSED (b2eeec3)
+- Pre-fix repro: bad-occurredAt ingest → orphan contact (0 enquiries/convos).
+- Post-fix: same ingest → rollback, NO contact row; happy path unchanged
+  (processed, enquiry + conversation created).
+- Was: `ingestion.service.ts` resolveContact() ran before $transaction.
 
 ### Verified-OK (no finding)
 
@@ -163,3 +172,11 @@ deferred.
 1. Veda AI reply on web chat sets firstRespondedAt (V-E1 second leg).
 2. A real WhatsApp template send delivers with the guest's first name (V-C3)
    and to a +91-canonical number (V-B1).
+
+## Final status (2026-07-13)
+
+All 10 findings CLOSED (7 P1/P2 + 3 P3). Final regression: jest 14/14,
+typecheck clean both sides, combined live spot-check (program detection +
+phone canonicalization + fallback recording) passed, DB at baseline
+(7 contacts, 1 user). 12 commits on `feature/per-user-screen-access`
+pending push (10 fixes incl. find_person, + docs).

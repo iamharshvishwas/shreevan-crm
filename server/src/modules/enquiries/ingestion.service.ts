@@ -92,9 +92,9 @@ export class IngestionService {
   }
 
   private async process(ev: NormalizedInboundEvent): Promise<IngestResult> {
-    const contact = await this.resolveContact(ev);
-
     return this.prisma.$transaction(async (tx) => {
+      // Inside the transaction so a failed ingest never leaves an orphan contact.
+      const contact = await this.resolveContact(tx, ev);
       // Find an open enquiry for this contact, or create one.
       let enquiry = await tx.enquiry.findFirst({
         where: { contactId: contact.id, status: { in: [EnquiryStatus.NEEDS_REPLY, EnquiryStatus.WAITING_FOR_CUSTOMER] }, leadId: null },
@@ -182,7 +182,7 @@ export class IngestionService {
   }
 
   /** Exact, safe link only — channel handle / verified email / phone. */
-  private async resolveContact(ev: NormalizedInboundEvent): Promise<Contact> {
+  private async resolveContact(tx: Prisma.TransactionClient, ev: NormalizedInboundEvent): Promise<Contact> {
     const candidates: { channel: Channel; handle: string }[] = [
       { channel: ev.provider, handle: ev.sender.providerIdentityId },
     ];
@@ -191,7 +191,7 @@ export class IngestionService {
 
     let contact: Contact | null = null;
     for (const c of candidates) {
-      const id = await this.prisma.contactIdentity.findUnique({
+      const id = await tx.contactIdentity.findUnique({
         where: { channel_normalizedHandle: { channel: c.channel, normalizedHandle: normalizeHandle(c.channel, c.handle) } },
         include: { contact: true },
       });
@@ -201,7 +201,7 @@ export class IngestionService {
     // Create a new contact + its first identity. (Fuzzy duplicates become
     // review suggestions elsewhere — never auto-merged here.)
     if (!contact) {
-      contact = await this.prisma.contact.create({
+      contact = await tx.contact.create({
         data: {
           name: ev.sender.displayName || 'Unknown enquirer',
           firstTouchSource: ev.attribution.firstTouchSource,
@@ -222,16 +222,16 @@ export class IngestionService {
     // chat pre-form, email, WhatsApp). This is what makes each website chat a
     // named, contactable lead — and lets a returning visitor link to the same
     // contact across sessions via their email/phone.
-    return this.enrichContact(contact, ev);
+    return this.enrichContact(tx, contact, ev);
   }
 
   /** Fill in a real name + attach email / WhatsApp identities when provided. */
-  private async enrichContact(contact: Contact, ev: NormalizedInboundEvent): Promise<Contact> {
+  private async enrichContact(tx: Prisma.TransactionClient, contact: Contact, ev: NormalizedInboundEvent): Promise<Contact> {
     let current = contact;
 
     const provided = ev.sender.displayName?.trim();
     if (provided && !isPlaceholderName(provided) && isPlaceholderName(current.name) && provided !== current.name) {
-      current = await this.prisma.contact.update({ where: { id: current.id }, data: { name: provided } });
+      current = await tx.contact.update({ where: { id: current.id }, data: { name: provided } });
     }
 
     // Attach email + phone as identities (idempotent). If the handle already
@@ -243,12 +243,12 @@ export class IngestionService {
     for (const x of extras) {
       const normalized = normalizeHandle(x.channel, x.raw);
       if (!normalized) continue;
-      const existing = await this.prisma.contactIdentity.findUnique({
+      const existing = await tx.contactIdentity.findUnique({
         where: { channel_normalizedHandle: { channel: x.channel, normalizedHandle: normalized } },
         select: { id: true },
       });
       if (existing) continue;
-      await this.prisma.contactIdentity.create({
+      await tx.contactIdentity.create({
         data: {
           contactId: current.id,
           channel: x.channel,
@@ -285,11 +285,13 @@ function isPlaceholderName(name: string | null | undefined): boolean {
   return n === '' || n === 'website visitor' || n === 'unknown enquirer' || n === 'unknown';
 }
 
-/** Lightweight program-interest detection from the message text. */
+/** Lightweight program-interest detection from the message text. The number
+ *  must be day-context ("28 day", "28-day") — a bare "60" in "I am 60 years
+ *  old" or inside a phone number is NOT a program signal. */
 function detectProgram(text: string): string | undefined {
   const t = text.toLowerCase();
-  if (t.includes('60')) return '60-Day Integration Masterclass';
-  if (t.includes('14')) return '14-Day Foundations Program';
-  if (t.includes('28') || t.includes('reset')) return '28-Day Personal Reset';
+  if (/\b60[\s-]?day/.test(t)) return '60-Day Integration Masterclass';
+  if (/\b14[\s-]?day/.test(t)) return '14-Day Foundations Program';
+  if (/\b28[\s-]?day/.test(t) || t.includes('reset')) return '28-Day Personal Reset';
   return undefined;
 }
