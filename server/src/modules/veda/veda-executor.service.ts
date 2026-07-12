@@ -8,6 +8,7 @@ import { WhatsAppProvider } from './channels/whatsapp.provider';
 import { VoiceProvider } from './channels/voice.provider';
 import { VedaConfigService } from './veda-config.service';
 import { VedaLogService } from './veda-log.service';
+import { inQuietHours } from './veda-voice-scheduler.service';
 
 const MAX_ATTEMPTS = 3;
 const WINDOW_MS = 24 * 3600_000;
@@ -39,6 +40,11 @@ export class VedaExecutorService {
   async run(): Promise<void> {
     if (!(await this.vedaConfig.isGloballyEnabled())) return;
 
+    // Respect quiet hours for ALL outbound sends — a guest should never get a
+    // WhatsApp/email/call at 3am. Approvals simply defer to the next window.
+    const cfg = await this.vedaConfig.get();
+    if (inQuietHours(new Date(), cfg.quietHoursStart, cfg.quietHoursEnd, cfg.quietHoursTimezone)) return;
+
     const approved = await this.prisma.vedaApproval.findMany({
       where: { status: 'APPROVED', type: { in: ['SEND_EMAIL', 'SEND_WHATSAPP', 'VOICE_CALL'] } },
       orderBy: { reviewedAt: 'asc' },
@@ -47,7 +53,6 @@ export class VedaExecutorService {
 
     // Enforce the configured daily message cap (email + WhatsApp, rolling 24h).
     // Over-budget sends stay APPROVED and simply defer to a later tick.
-    const cfg = await this.vedaConfig.get();
     const sentToday = await this.prisma.vedaActionLog.count({
       where: {
         type: { in: ['EMAIL_SENT', 'WHATSAPP_SENT'] },
