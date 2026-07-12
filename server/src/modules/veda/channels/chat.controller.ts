@@ -98,6 +98,26 @@ export class ChatController {
     if (convo?.handoverToHuman) return { reply: '', handover: true, conversationId: result.conversationId };
 
     const { reply } = await this.chat.respond(result.conversationId);
+    if (!reply) {
+      // Veda couldn't reply (disabled / unconfigured / errored). The widget only
+      // renders polled OUTBOUND messages — without persisting the fallback the
+      // visitor sees silence, and staff never see what the visitor was told.
+      await this.prisma.message.create({
+        data: {
+          conversationId: result.conversationId,
+          direction: MessageDirection.OUTBOUND,
+          channel: Channel.WEBSITE_CHAT,
+          authorName: 'Veda',
+          body: FALLBACK_REPLY,
+          delivery: DeliveryState.SENT,
+          occurredAt: new Date(),
+        },
+      });
+      await this.prisma.conversation.update({
+        where: { id: result.conversationId },
+        data: { updatedAt: new Date(), needsAttention: true, attentionReason: 'Veda could not reply — visitor is waiting on the team' },
+      });
+    }
     return { reply: reply ?? FALLBACK_REPLY, conversationId: result.conversationId };
   }
 
