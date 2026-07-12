@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { randomUUID } from 'node:crypto';
 import type { Response } from 'express';
-import { Channel, ConnectionStatus, DeliveryState, MessageDirection } from '@prisma/client';
+import { Channel, ConnectionStatus, DeliveryState, EnquiryStatus, MessageDirection } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { extractContactFromText } from '../../contacts/identity.util';
 import { IngestionService } from '../../enquiries/ingestion.service';
@@ -191,7 +191,7 @@ export class ChatController {
   async agentReply(@Param('id') id: string, @Body() body: { text: string }, @CurrentUser() user: AuthUser) {
     const text = body.text?.trim();
     if (!text) return { ok: false };
-    const convo = await this.prisma.conversation.findUnique({ where: { id }, select: { channel: true } });
+    const convo = await this.prisma.conversation.findUnique({ where: { id }, select: { channel: true, enquiryId: true } });
     if (!convo) return { ok: false };
 
     const agent = await this.prisma.user.findUnique({ where: { id: user.id }, select: { name: true } });
@@ -211,6 +211,19 @@ export class ChatController {
       where: { id },
       data: { handoverToHuman: true, needsAttention: false, attentionReason: null, updatedAt: new Date() },
     });
+    // A staff reply answers the enquiry — same transition as the Enquiries-tab
+    // reply, so the "needs reply" badge and the first-response SLA clock stop.
+    if (convo.enquiryId) {
+      const now = new Date();
+      await this.prisma.enquiry.updateMany({
+        where: { id: convo.enquiryId, firstRespondedAt: null },
+        data: { firstRespondedAt: now },
+      });
+      await this.prisma.enquiry.update({
+        where: { id: convo.enquiryId },
+        data: { status: EnquiryStatus.WAITING_FOR_CUSTOMER, lastMessageAt: now },
+      }).catch(() => undefined);
+    }
     // Self-learning: this human answer may resolve a question Veda couldn't.
     void this.learning.captureAnswer(id, text);
     return { ok: true };
