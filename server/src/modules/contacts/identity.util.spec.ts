@@ -11,6 +11,13 @@ describe('identity normalization', () => {
     expect(normalizePhone('0091-98470-12233')).toBe('+919847012233');
   });
 
+  it('canonicalizes bare Indian mobiles to +91 (one identity per person)', () => {
+    expect(normalizePhone('8755548899')).toBe('+918755548899');
+    expect(normalizePhone('87555 48899')).toBe('+918755548899');
+    expect(normalizePhone('91 87555 48899')).toBe('+918755548899');
+    expect(normalizePhone('+14155552671')).toBe('+14155552671'); // non-Indian untouched
+  });
+
   it('routes handle normalization by channel', () => {
     expect(normalizeHandle(Channel.EMAIL, 'A@B.com')).toBe('a@b.com');
     expect(normalizeHandle(Channel.WHATSAPP, '+91 (984) 701-2233')).toBe('+919847012233');

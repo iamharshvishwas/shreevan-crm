@@ -45,7 +45,7 @@ export class VedaConfigService {
       quietHoursStart:    dto.quietHoursStart    ?? current.quietHoursStart,
       quietHoursEnd:      dto.quietHoursEnd      ?? current.quietHoursEnd,
       quietHoursTimezone: dto.quietHoursTimezone ?? current.quietHoursTimezone,
-      dailyMessageLimit:  current.dailyMessageLimit,
+      dailyMessageLimit:  dto.dailyMessageLimit  ?? current.dailyMessageLimit,
       steps: { ...current.steps },
     };
     for (const key of VEDA_STEP_KEYS) {

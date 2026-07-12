@@ -8,12 +8,13 @@ import { WhatsAppProvider } from './channels/whatsapp.provider';
 import { VoiceProvider } from './channels/voice.provider';
 import { VedaConfigService } from './veda-config.service';
 import { VedaLogService } from './veda-log.service';
+import { inQuietHours } from './veda-voice-scheduler.service';
 
 const MAX_ATTEMPTS = 3;
 const WINDOW_MS = 24 * 3600_000;
 
 interface EmailPayload { to: string; subject: string; body: string }
-interface WaPayload { to: string; contactId?: string; body: string; slots?: { iso: string; label: string }[] }
+interface WaPayload { to: string; contactId?: string; name?: string; body: string; slots?: { iso: string; label: string }[] }
 interface VoicePayload { to: string; leadName: string; programInterest?: string | null; language?: string | null; discoveryCallId: string }
 
 /**
@@ -39,11 +40,27 @@ export class VedaExecutorService {
   async run(): Promise<void> {
     if (!(await this.vedaConfig.isGloballyEnabled())) return;
 
+    // Respect quiet hours for ALL outbound sends — a guest should never get a
+    // WhatsApp/email/call at 3am. Approvals simply defer to the next window.
+    const cfg = await this.vedaConfig.get();
+    if (inQuietHours(new Date(), cfg.quietHoursStart, cfg.quietHoursEnd, cfg.quietHoursTimezone)) return;
+
     const approved = await this.prisma.vedaApproval.findMany({
       where: { status: 'APPROVED', type: { in: ['SEND_EMAIL', 'SEND_WHATSAPP', 'VOICE_CALL'] } },
       orderBy: { reviewedAt: 'asc' },
       take: 10,
     });
+
+    // Enforce the configured daily message cap (email + WhatsApp, rolling 24h).
+    // Over-budget sends stay APPROVED and simply defer to a later tick.
+    const sentToday = await this.prisma.vedaActionLog.count({
+      where: {
+        type: { in: ['EMAIL_SENT', 'WHATSAPP_SENT'] },
+        status: 'COMPLETED',
+        createdAt: { gte: new Date(Date.now() - 24 * 3600_000) },
+      },
+    });
+    let budget = Math.max(0, cfg.dailyMessageLimit - sentToday);
 
     const LOG_TYPE: Record<string, string> = { SEND_EMAIL: 'EMAIL_SENT', SEND_WHATSAPP: 'WHATSAPP_SENT', VOICE_CALL: 'VOICE_PLACED' };
 
@@ -52,6 +69,14 @@ export class VedaExecutorService {
       const prior = await this.prisma.vedaActionLog.findMany({ where: { approvalId: approval.id, type: logType } });
       if (prior.some((p) => p.status === 'COMPLETED')) continue;
       if (prior.length >= MAX_ATTEMPTS) continue;
+
+      if (approval.type === 'SEND_EMAIL' || approval.type === 'SEND_WHATSAPP') {
+        if (budget <= 0) {
+          this.logger.warn(`Daily message limit (${cfg.dailyMessageLimit}) reached — deferring approval ${approval.id}`);
+          continue;
+        }
+        budget--;
+      }
 
       if (approval.type === 'SEND_EMAIL') {
         await this.sendEmail(approval.id, approval.payload as unknown as EmailPayload, approval.entityType, approval.entityId);
@@ -122,7 +147,8 @@ export class VedaExecutorService {
       } else {
         // First contact / outside window → pre-approved template (no dynamic buttons).
         const lang = await this.langFor(payload.contactId);
-        const firstName = payload.to;
+        // Template {{1}} is the guest's first name — never the phone number.
+        const firstName = payload.name?.trim().split(/\s+/)[0] || 'there';
         const tmpl = this.config.get<string>('WHATSAPP_GREETING_TEMPLATE')!;
         const r = await this.wa.sendTemplate(payload.to, tmpl, lang, [firstName]);
         simulated = r.simulated;

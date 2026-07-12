@@ -118,6 +118,14 @@ export class VedaChatService {
         where: { id: conversationId },
         data: { updatedAt: new Date(), ...(attention ? { needsAttention: true, attentionReason: attention } : {}) },
       });
+      // Veda answered the guest, so the first-response SLA clock stops — but the
+      // enquiry deliberately stays NEEDS_REPLY: a human still hasn't triaged it.
+      if (conversation.enquiryId) {
+        await this.prisma.enquiry.updateMany({
+          where: { id: conversation.enquiryId, firstRespondedAt: null },
+          data: { firstRespondedAt: new Date() },
+        });
+      }
 
       await this.logs.write({
         type: 'CHAT_REPLY', status: 'COMPLETED', entityType: 'Conversation', entityId: conversationId,

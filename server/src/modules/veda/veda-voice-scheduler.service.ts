@@ -119,7 +119,7 @@ export class VedaVoiceSchedulerService {
 }
 
 /** True if `now` falls inside the configured quiet-hours window in that timezone. */
-function inQuietHours(now: Date, startHHMM: string, endHHMM: string, tz: string): boolean {
+export function inQuietHours(now: Date, startHHMM: string, endHHMM: string, tz: string): boolean {
   try {
     const fmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz });
     const cur = fmt.format(now); // "HH:MM"
