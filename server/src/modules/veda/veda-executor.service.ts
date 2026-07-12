@@ -14,7 +14,7 @@ const MAX_ATTEMPTS = 3;
 const WINDOW_MS = 24 * 3600_000;
 
 interface EmailPayload { to: string; subject: string; body: string }
-interface WaPayload { to: string; contactId?: string; body: string; slots?: { iso: string; label: string }[] }
+interface WaPayload { to: string; contactId?: string; name?: string; body: string; slots?: { iso: string; label: string }[] }
 interface VoicePayload { to: string; leadName: string; programInterest?: string | null; language?: string | null; discoveryCallId: string }
 
 /**
@@ -147,7 +147,8 @@ export class VedaExecutorService {
       } else {
         // First contact / outside window → pre-approved template (no dynamic buttons).
         const lang = await this.langFor(payload.contactId);
-        const firstName = payload.to;
+        // Template {{1}} is the guest's first name — never the phone number.
+        const firstName = payload.name?.trim().split(/\s+/)[0] || 'there';
         const tmpl = this.config.get<string>('WHATSAPP_GREETING_TEMPLATE')!;
         const r = await this.wa.sendTemplate(payload.to, tmpl, lang, [firstName]);
         simulated = r.simulated;

@@ -77,6 +77,7 @@ export class WhatsAppDrafterService {
         payload: {
           to: wa.handle,
           contactId: lead.contactId,
+          name: lead.contact.name,
           body: draft.message,
           slots, // [{ iso, label }]
         },
@@ -154,7 +155,7 @@ export class WhatsAppDrafterService {
         entityType: 'Enquiry',
         entityId: enquiryId,
         draftText: `WhatsApp to ${enquiry.contact.name} (${wa.handle}): "${draft.message}" + ${slots.length} call slots`,
-        payload: { to: wa.handle, contactId: enquiry.contactId, body: draft.message, slots },
+        payload: { to: wa.handle, contactId: enquiry.contactId, name: enquiry.contact.name, body: draft.message, slots },
         context: { reasoning: 'Requested by the visitor in live chat', language: enquiry.contact.language ?? 'auto' },
         expiresInHours: 48,
       });
