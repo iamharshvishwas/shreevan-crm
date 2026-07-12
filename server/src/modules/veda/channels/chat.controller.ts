@@ -13,7 +13,7 @@ import { VedaLearningService } from '../agents/veda-learning.service';
 import { ElevenLabsProvider } from './eleven-labs.provider';
 import { Public, CurrentUser, RequireScreens } from '../../../common/auth/decorators';
 import type { AuthUser } from '../../../common/auth/auth.types';
-import { ChatMessageDto } from '../dto/veda.dto';
+import { ChatMessageDto, ChatTtsDto } from '../dto/veda.dto';
 
 const FALLBACK_REPLY = 'Thank you for reaching out to Shreevan Wellness 🌿 Our team will get back to you very shortly.';
 
@@ -46,7 +46,7 @@ export class ChatController {
   @Public()
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @Post('tts')
-  async speak(@Body() body: { text?: string }, @Res() res: Response): Promise<void> {
+  async speak(@Body() body: ChatTtsDto, @Res() res: Response): Promise<void> {
     const text = (body?.text ?? '').trim();
     if (!text || !this.tts.isConfigured()) { res.status(204).end(); return; }
     const audio = await this.tts.speak(text);
