@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export const VEDA_STEP_KEYS = ['QUALIFY_LEAD', 'SEND_EMAIL', 'SEND_WHATSAPP', 'VOICE_CALL', 'CHAT_REPLY', 'NURTURE', 'SELF_LEARN'] as const;
@@ -31,6 +31,7 @@ export class UpdateVedaConfigDto {
   @ApiPropertyOptional() @IsOptional() @IsString() quietHoursStart?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() quietHoursEnd?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() quietHoursTimezone?: string;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Max(1000) dailyMessageLimit?: number;
 
   @ApiPropertyOptional({ type: UpdateStepConfigDto })
   @IsOptional()

@@ -45,6 +45,18 @@ export class VedaExecutorService {
       take: 10,
     });
 
+    // Enforce the configured daily message cap (email + WhatsApp, rolling 24h).
+    // Over-budget sends stay APPROVED and simply defer to a later tick.
+    const cfg = await this.vedaConfig.get();
+    const sentToday = await this.prisma.vedaActionLog.count({
+      where: {
+        type: { in: ['EMAIL_SENT', 'WHATSAPP_SENT'] },
+        status: 'COMPLETED',
+        createdAt: { gte: new Date(Date.now() - 24 * 3600_000) },
+      },
+    });
+    let budget = Math.max(0, cfg.dailyMessageLimit - sentToday);
+
     const LOG_TYPE: Record<string, string> = { SEND_EMAIL: 'EMAIL_SENT', SEND_WHATSAPP: 'WHATSAPP_SENT', VOICE_CALL: 'VOICE_PLACED' };
 
     for (const approval of approved) {
@@ -52,6 +64,14 @@ export class VedaExecutorService {
       const prior = await this.prisma.vedaActionLog.findMany({ where: { approvalId: approval.id, type: logType } });
       if (prior.some((p) => p.status === 'COMPLETED')) continue;
       if (prior.length >= MAX_ATTEMPTS) continue;
+
+      if (approval.type === 'SEND_EMAIL' || approval.type === 'SEND_WHATSAPP') {
+        if (budget <= 0) {
+          this.logger.warn(`Daily message limit (${cfg.dailyMessageLimit}) reached — deferring approval ${approval.id}`);
+          continue;
+        }
+        budget--;
+      }
 
       if (approval.type === 'SEND_EMAIL') {
         await this.sendEmail(approval.id, approval.payload as unknown as EmailPayload, approval.entityType, approval.entityId);
