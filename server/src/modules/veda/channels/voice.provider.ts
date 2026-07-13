@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { KnowledgeService } from '../knowledge/knowledge.service';
-import { VEDA_OPERATING_RULES } from '../veda-operating-rules';
+import { VEDA_CONVERSATION_CRAFT, VEDA_OPERATING_RULES } from '../veda-operating-rules';
 
 export interface PlaceCallInput {
   to: string;            // E.164 number
@@ -174,5 +174,7 @@ const VEDA_PERSONA = `You are Veda, the AI relationship guide for Shreevan Welln
 STYLE:
 - Speak in the caller's language — Hindi, English, or Hinglish — matching how they speak.
 - Calm, warm, premium, unhurried. Never pushy or salesy. Keep turns short and conversational.
+
+${VEDA_CONVERSATION_CRAFT}
 
 ${VEDA_OPERATING_RULES}`;
