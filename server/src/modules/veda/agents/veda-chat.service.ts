@@ -8,7 +8,7 @@ import { KnowledgeService } from '../knowledge/knowledge.service';
 import { VedaLearningService } from './veda-learning.service';
 import { EmailDrafterService } from './email-drafter.service';
 import { WhatsAppDrafterService } from './whatsapp-drafter.service';
-import { VEDA_OPERATING_RULES } from '../veda-operating-rules';
+import { VEDA_CONVERSATION_CRAFT, VEDA_OPERATING_RULES } from '../veda-operating-rules';
 
 const HISTORY_LIMIT = 16;
 
@@ -193,15 +193,17 @@ OUR PROGRAMS:
 ${programList}
 
 YOUR GOAL:
-- Warmly welcome them, understand what they're looking for, and answer questions about our retreats at a high level.
-- Naturally guide them toward booking a short discovery call with our team. Offer to take their name and a good time/number, or invite them to share it.
-- If they ask you to send/share program details on their email or WhatsApp, call the queue_program_details tool (needs that contact on file — check DETAILS ALREADY ON FILE below, or ask for it first if it's missing). Tell them the truth about what the tool reports back — if it queued, say a team member will send it shortly; if it couldn't (e.g. no contact on file), say so plainly instead of claiming it's done.
+- Understand what brought them here before guiding them anywhere — their need comes first, our programs second.
+- Answer what they actually asked, concretely. If they ask you to send/share program details on their email or WhatsApp, call the queue_program_details tool (needs that contact on file — check DETAILS ALREADY ON FILE below, or ask for it once if missing). Tell them the truth about what the tool reports back — if it queued, say the team will send it shortly; if it couldn't, say so plainly instead of claiming it's done.
+- A discovery call is an offer, not a target: suggest it once, only when it genuinely helps (they're unsure which program fits, have suitability questions, or are ready to plan dates). If they decline or ask for something else, drop it and serve what they asked for.
 
 STYLE:
 - Reply in the guest's language — Hindi, English, or Hinglish — matching how they write.
 - Calm, warm, premium. ${isEmail
       ? 'This is an EMAIL reply: write 2-3 short paragraphs, greet by name if known, and sign off as "Warm regards,\\nVeda · Shreevan Wellness". Do not include a subject line.'
-      : 'This is a live chat, so keep replies short (1-4 sentences). A light 🌿 occasionally is fine.'}
+      : 'This is a live chat, so keep replies short (1-4 sentences). 🌿 at most once every few messages, never in consecutive ones.'}
+
+${VEDA_CONVERSATION_CRAFT}
 
 ${VEDA_OPERATING_RULES}${knownDetailsBlock}${kbBlock}`;
   }
@@ -209,11 +211,16 @@ ${VEDA_OPERATING_RULES}${knownDetailsBlock}${kbBlock}`;
 
 /**
  * Lightweight heuristic to raise a hand for human review:
+ *  - the visitor sounds frustrated (repeating themselves, calling out a miss), or
  *  - the visitor explicitly asks for a person, or
  *  - Veda's reply signals uncertainty / a hand-off to "the team".
+ * Exported for tests.
  */
-function detectAttention(userText: string, vedaReply: string): string | null {
+export function detectAttention(userText: string, vedaReply: string): string | null {
   const u = userText.toLowerCase();
+  if (/(already (told|shared|gave|said|sent)|i told you|told you (this|that|already|before)|once again|again and again|not helping|no use|useless|wrong answer|are you (even )?listening|pehle (hi )?(bata|de|bhej) (diya|di|chuki|chuka)|phir se wahi|baar baar|bekaar|kya faida)/.test(u)) {
+    return 'Guest seems frustrated — a human should step in';
+  }
   if (/\b(human|agent|person|representative|real person|someone|insaan|vyakti)\b/.test(u) || /baat kar/.test(u) && /(team|insaan|human)/.test(u)) {
     return 'Client may want to speak to a person';
   }
