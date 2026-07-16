@@ -157,4 +157,21 @@ export const api = {
   delete: <T>(path: string) => request<T>('DELETE', path),
 };
 
+/** Authenticated binary fetch (e.g. a call recording) — the browser can't
+ *  attach the Bearer token to a plain <a href>, so callers fetch the Blob here
+ *  and hand it to an <audio>/download element themselves. */
+export async function getBlob(path: string): Promise<Blob> {
+  const res = await fetch(`${BASE}${path}`, {
+    headers: accessToken ? { authorization: `Bearer ${accessToken}` } : {},
+  }).catch(() => {
+    throw new ApiError(0, { statusCode: 0, code: 'NETWORK', message: 'Could not reach the API. Is the backend running?' });
+  });
+  if (res.status === 401 && refreshToken && (await refresh())) return getBlob(path);
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new ApiError(res.status, data);
+  }
+  return res.blob();
+}
+
 export { BASE as API_BASE };

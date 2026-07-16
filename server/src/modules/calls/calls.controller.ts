@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Res, StreamableFile } from '@nestjs/common';
 import { RequireScreens } from '../../common/auth/decorators';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsISO8601, IsOptional, IsString } from 'class-validator';
+import type { Response } from 'express';
 import { CallsService } from './calls.service';
 
 class CompleteCallDto { @IsOptional() @IsString() outcome?: string; }
@@ -32,5 +33,15 @@ export class CallsController {
   @Post(':id/cancel')
   cancel(@Param('id') id: string) {
     return this.calls.cancel(id);
+  }
+
+  /** Proxies the recording from Vapi (which now requires an authenticated
+   *  request) so the frontend can play/download it without exposing the Vapi
+   *  API key to the browser. */
+  @Get(':id/recording')
+  async recording(@Param('id') id: string, @Res({ passthrough: true }) res: Response): Promise<StreamableFile> {
+    const { buffer, contentType } = await this.calls.getRecording(id);
+    res.set({ 'Content-Type': contentType, 'Cache-Control': 'private, max-age=3600' });
+    return new StreamableFile(buffer);
   }
 }

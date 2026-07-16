@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { AppStore } from '../store';
 import { ClockIcon } from '../components/icons';
 import { Callout, DateTile, Pill } from '../components/ui';
@@ -9,6 +10,22 @@ const istPart = (utc: string, opt: Intl.DateTimeFormatOptions) =>
 
 export function Calls({ app }: { app: AppStore }) {
   const { data, loading, error, reload } = useCalls();
+  const [openingRecording, setOpeningRecording] = useState<string | null>(null);
+
+  async function openRecording(c: DiscoveryCall) {
+    setOpeningRecording(c.id);
+    try {
+      const blob = await callsApi.recordingBlob(c.id);
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noreferrer');
+      // Revoke once the new tab has had time to load it — it holds its own reference after that.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e) {
+      app.showToastMsg(e instanceof Error ? e.message : 'Could not load the recording.');
+    } finally {
+      setOpeningRecording(null);
+    }
+  }
 
   async function complete(c: DiscoveryCall) {
     const outcome = window.prompt('Call outcome (optional):', '') ?? undefined;
@@ -78,9 +95,10 @@ export function Calls({ app }: { app: AppStore }) {
                     {(c.recordingUrl || c.transcriptRedacted) && (
                       <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 12 }}>
                         {c.recordingUrl && (
-                          <a href={c.recordingUrl} target="_blank" rel="noreferrer" className="hov-underline" style={{ color: 'var(--sw-river-600)', fontWeight: 600, textDecoration: 'none' }}>
-                            ▶ Recording
-                          </a>
+                          <button onClick={() => void openRecording(c)} disabled={openingRecording === c.id} className="hov-underline"
+                            style={{ background: 'none', border: 'none', padding: 0, cursor: openingRecording === c.id ? 'default' : 'pointer', color: 'var(--sw-river-600)', fontWeight: 600, fontFamily: 'var(--font-body)', fontSize: 12 }}>
+                            {openingRecording === c.id ? 'Loading…' : '▶ Recording'}
+                          </button>
                         )}
                         {c.transcriptRedacted && (
                           <details style={{ color: 'var(--sw-stone-600)' }}>
