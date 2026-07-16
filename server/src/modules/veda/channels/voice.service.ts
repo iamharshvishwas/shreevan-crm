@@ -6,6 +6,7 @@ import { RedactionService } from '../ai/redaction.service';
 import { VedaConfigService } from '../veda-config.service';
 import { VedaLogService } from '../veda-log.service';
 import { EmailDrafterService } from '../agents/email-drafter.service';
+import { VedaBrainService } from '../agents/veda-brain.service';
 
 // Defensive extraction — Vapi's report shape has shifted across versions.
 interface VapiArtifactMessage { role?: string; message?: string; text?: string; content?: string }
@@ -75,6 +76,7 @@ export class VoiceService {
     private readonly config: VedaConfigService,
     private readonly logs: VedaLogService,
     private readonly emailDrafter: EmailDrafterService,
+    private readonly brain: VedaBrainService,
   ) {}
 
   /** Handle a Vapi webhook message. */
@@ -163,8 +165,14 @@ export class VoiceService {
       durationMs: Date.now() - started, completedAt: new Date(),
     });
 
-    // Chain: draft a post-call follow-up email if that step is enabled.
-    if (call.leadId && (await this.config.isStepEnabled('SEND_EMAIL'))) {
+    // Chain: the Brain reads the (redacted) transcript, understands what the
+    // caller wanted, and follows up on their channels autonomously. Falls back
+    // to the old draft-for-approval path only when the Brain is off.
+    if (await this.config.isStepEnabled('BRAIN')) {
+      await this.brain.processPostCall(call.id).catch((e) =>
+        this.logger.warn(`Post-call brain follow-up failed: ${(e as Error).message}`),
+      );
+    } else if (call.leadId && (await this.config.isStepEnabled('SEND_EMAIL'))) {
       await this.emailDrafter.draftForLead(call.leadId).catch((e) =>
         this.logger.warn(`Post-call email draft failed: ${e.message}`),
       );

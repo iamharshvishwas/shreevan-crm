@@ -87,14 +87,16 @@ export class LeadQualifierService {
         completedAt: new Date(),
       });
 
-      // Chain: draft a follow-up email if that step is enabled.
-      if (await this.config.isStepEnabled('SEND_EMAIL')) {
+      // Chain drafts only when the Brain is OFF — with the Brain on, first-touch
+      // outreach already happened at enquiry time; drafting again here would
+      // double-message the same lead after conversion.
+      const brainOwnsOutreach = await this.config.isStepEnabled('BRAIN');
+      if (!brainOwnsOutreach && (await this.config.isStepEnabled('SEND_EMAIL'))) {
         await this.emailDrafter.draftForLead(leadId).catch((e) =>
           this.logger.warn(`Email draft after qualify failed: ${e.message}`),
         );
       }
-      // Chain: draft a WhatsApp greeting + slot invite if that step is enabled.
-      if (await this.config.isStepEnabled('SEND_WHATSAPP')) {
+      if (!brainOwnsOutreach && (await this.config.isStepEnabled('SEND_WHATSAPP'))) {
         await this.whatsappDrafter.draftForLead(leadId).catch((e) =>
           this.logger.warn(`WhatsApp draft after qualify failed: ${e.message}`),
         );

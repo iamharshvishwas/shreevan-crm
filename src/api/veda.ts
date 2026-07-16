@@ -8,6 +8,7 @@ export interface VedaConfig {
   quietHoursTimezone: string;
   dailyMessageLimit: number;
   steps: {
+    BRAIN:         VedaStepConfig;
     QUALIFY_LEAD:  VedaStepConfig;
     SEND_EMAIL:    VedaStepConfig;
     SEND_WHATSAPP: VedaStepConfig;

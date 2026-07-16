@@ -4,6 +4,7 @@ import { vedaApi, type VedaConfig, type VedaApproval, type VedaActionLog, type V
 import { useAuth } from '../auth/useAuth';
 
 const STEP_LABELS: Record<string, { label: string; desc: string; phase: string }> = {
+  BRAIN:         { label: 'Veda Brain (Autonomy)', desc: 'Understands every new lead from any channel — chat, forms, ads, WhatsApp, email, calls — then composes and sends the right reply on the right channel(s) by itself, no approval wait', phase: 'Brain' },
   QUALIFY_LEAD:  { label: 'Lead Qualification',  desc: 'Extract program, budget, language & urgency from every new lead', phase: 'Phase 1' },
   SEND_EMAIL:    { label: 'Auto Email',           desc: 'Draft personalised follow-up emails for approval before sending',   phase: 'Phase 1' },
   SEND_WHATSAPP: { label: 'WhatsApp Messages',    desc: 'Send WhatsApp greetings & slot-scheduling via Meta Cloud API',      phase: 'Phase 2' },
