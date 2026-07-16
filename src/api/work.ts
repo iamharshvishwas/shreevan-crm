@@ -1,4 +1,4 @@
-import { api } from './client';
+import { api, getBlob } from './client';
 import { useLiveResource } from './live';
 
 export type TaskBucket = 'overdue' | 'today' | 'upcoming' | 'done';
@@ -84,6 +84,10 @@ export const callsApi = {
   list: () => api.get<{ upcoming: DiscoveryCall[]; completed: DiscoveryCall[] }>('/discovery-calls'),
   complete: (id: string, outcome?: string) => api.post(`/discovery-calls/${id}/complete`, { outcome }),
   reschedule: (id: string, scheduledAt: string) => api.post(`/discovery-calls/${id}/reschedule`, { scheduledAt }),
+  // Vapi now requires an authenticated request to fetch a recording — the
+  // browser can't attach our Bearer token to a plain link, so this goes
+  // through our own proxy endpoint instead of the raw stored recordingUrl.
+  recordingBlob: (id: string) => getBlob(`/discovery-calls/${id}/recording`),
 };
 
 export const customersApi = {
