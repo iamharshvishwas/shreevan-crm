@@ -27,6 +27,7 @@ import { LeadQualifierService } from './agents/lead-qualifier.service';
 import { EmailDrafterService } from './agents/email-drafter.service';
 import { WhatsAppDrafterService } from './agents/whatsapp-drafter.service';
 import { VedaChatService } from './agents/veda-chat.service';
+import { VedaBrainService } from './agents/veda-brain.service';
 import { VedaLearningService } from './agents/veda-learning.service';
 import { VedaLearningScheduler } from './agents/veda-learning.scheduler';
 import { VedaLearningController } from './agents/veda-learning.controller';
@@ -61,6 +62,7 @@ import { NurtureScheduler } from './nurture/nurture.scheduler';
     EmailDrafterService,
     WhatsAppDrafterService,
     VedaChatService,
+    VedaBrainService,
     VedaLearningService,
     VedaLearningScheduler,
     CommandService,

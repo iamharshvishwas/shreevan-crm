@@ -120,6 +120,12 @@ export class VedaController {
     });
   }
 
+  /** "Veda's Tasks" transparency feed: what she did + what she'll do next. */
+  @Get('tasks')
+  tasks() {
+    return this.logs.tasks();
+  }
+
   @Get('summary')
   getSummary() {
     return this.logs.summary();

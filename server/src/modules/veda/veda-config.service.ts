@@ -11,11 +11,14 @@ const DEFAULT_CONFIG: VedaConfig = {
   quietHoursTimezone: 'Asia/Kolkata',
   dailyMessageLimit: 50,
   steps: {
-    QUALIFY_LEAD:  { enabled: true,  autoApprove: false },
-    SEND_EMAIL:    { enabled: true,  autoApprove: false },
-    SEND_WHATSAPP: { enabled: false, autoApprove: false },
+    // The Brain is Veda's autonomy: understand every inbound lead (any channel),
+    // decide the right outreach channel(s), compose, and act — no human wait.
+    BRAIN:         { enabled: true,  autoApprove: true  },
+    QUALIFY_LEAD:  { enabled: true,  autoApprove: true  },
+    SEND_EMAIL:    { enabled: true,  autoApprove: true  },
+    SEND_WHATSAPP: { enabled: true,  autoApprove: true  },
     VOICE_CALL:    { enabled: false, autoApprove: false },
-    CHAT_REPLY:    { enabled: false, autoApprove: true  }, // chat is real-time; "auto" = replies instantly
+    CHAT_REPLY:    { enabled: true,  autoApprove: true  }, // chat is real-time; "auto" = replies instantly
     NURTURE:       { enabled: false, autoApprove: false }, // multi-touch follow-up cadence for cold leads
     SELF_LEARN:    { enabled: true,  autoApprove: true  }, // learn from gaps; auto-apply safe entries, gate sensitive ones
   },

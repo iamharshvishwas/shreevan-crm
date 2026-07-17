@@ -5,7 +5,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { VedaConfigService } from './veda-config.service';
 import { VedaApprovalService } from './veda-approval.service';
 import { VedaLogService } from './veda-log.service';
-import { formatIst } from './channels/slots.util';
+import { formatIst, CALLBACK_MARKER } from './channels/slots.util';
 
 // Call for slots that are due, but not ones missed long ago (e.g. while Veda was off).
 const OVERDUE_GRACE_MS = 6 * 3600_000;
@@ -40,10 +40,12 @@ export class VedaVoiceSchedulerService {
       where: {
         status: 'SCHEDULED',
         scheduledAt: { lte: now, gte: earliest },
-        // Hard requirement: only call when there's a real active lead behind the slot.
-        // No lead = no business reason for Veda to dial.
-        leadId: { not: null },
-        lead: { confirmedAt: null, closedLostAt: null },
+        // Only call with a business reason: an active lead behind the slot, OR
+        // the guest explicitly asked Veda to call them (callback marker).
+        OR: [
+          { leadId: { not: null }, lead: { confirmedAt: null, closedLostAt: null } },
+          { prepNotes: { contains: CALLBACK_MARKER } },
+        ],
       },
       include: {
         contact: { include: { identities: true } },
