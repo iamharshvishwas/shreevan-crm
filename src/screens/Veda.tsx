@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import type { AppStore } from '../store';
-import { vedaApi, type VedaConfig, type VedaApproval, type VedaActionLog, type VedaSummary, type VedaAnalytics, type KnowledgeEntry, type KnowledgeGap } from '../api/veda';
+import { vedaApi, type VedaConfig, type VedaApproval, type VedaActionLog, type VedaSummary, type VedaAnalytics, type VedaTasks, type KnowledgeEntry, type KnowledgeGap } from '../api/veda';
 import { useAuth } from '../auth/useAuth';
 
 const STEP_LABELS: Record<string, { label: string; desc: string; phase: string }> = {
@@ -102,13 +102,14 @@ export function Veda({ app }: { app: AppStore }) {
   const [analytics, setAnalytics]   = useState<VedaAnalytics | null>(null);
   const [knowledge, setKnowledge]   = useState<KnowledgeEntry[]>([]);
   const [gaps, setGaps]             = useState<KnowledgeGap[]>([]);
+  const [tasks, setTasks]           = useState<VedaTasks | null>(null);
   const [loading, setLoading]       = useState(true);
   const [saving, setSaving]         = useState(false);
-  const [activeTab, setActiveTab]   = useState<'pending' | 'history' | 'analytics' | 'knowledge' | 'learning'>('pending');
+  const [activeTab, setActiveTab]   = useState<'pending' | 'tasks' | 'history' | 'analytics' | 'knowledge' | 'learning'>('pending');
 
   const load = useCallback(async () => {
     try {
-      const [cfg, appr, lg, sum, an, kb, gp] = await Promise.all([
+      const [cfg, appr, lg, sum, an, kb, gp, tk] = await Promise.all([
         isAdmin ? vedaApi.getConfig() : Promise.resolve(null),
         vedaApi.listApprovals('PENDING'),
         vedaApi.getLogs(20),
@@ -116,6 +117,7 @@ export function Veda({ app }: { app: AppStore }) {
         vedaApi.getAnalytics().catch(() => null),
         vedaApi.listKnowledge().catch(() => []),
         vedaApi.listGaps().catch(() => []),
+        vedaApi.getTasks().catch(() => null),
       ]);
       if (cfg) setConfig(cfg);
       setApprovals(appr.items);
@@ -124,6 +126,7 @@ export function Veda({ app }: { app: AppStore }) {
       setAnalytics(an);
       setKnowledge(kb);
       setGaps(gp);
+      setTasks(tk);
     } catch {
       // non-fatal — show whatever loaded
     } finally {
@@ -465,7 +468,7 @@ export function Veda({ app }: { app: AppStore }) {
       {/* Approvals + timeline tabs */}
       <Card>
         <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid var(--sw-sand-100)' }}>
-          {(['pending', 'history', 'analytics', 'knowledge', 'learning'] as const).map((tab) => (
+          {(['pending', 'tasks', 'history', 'analytics', 'knowledge', 'learning'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -480,6 +483,7 @@ export function Veda({ app }: { app: AppStore }) {
             >
               {tab === 'pending'
                 ? `Pending approvals${approvals.length > 0 ? ` (${approvals.length})` : ''}`
+                : tab === 'tasks' ? `Veda's Tasks${tasks?.planned.length ? ` (${tasks.planned.length})` : ''}`
                 : tab === 'history' ? 'Action history'
                 : tab === 'analytics' ? 'ROI & analytics'
                 : tab === 'knowledge' ? `Knowledge${knowledge.length ? ` (${knowledge.length})` : ''}`
@@ -488,6 +492,7 @@ export function Veda({ app }: { app: AppStore }) {
           ))}
         </div>
 
+        {activeTab === 'tasks' && <TasksPanel t={tasks} />}
         {activeTab === 'analytics' && <AnalyticsPanel a={analytics} />}
         {activeTab === 'learning' && (
           <LearningPanel gaps={gaps} isAdmin={isAdmin} onApprove={approveGap} onDismiss={dismissGap} />
@@ -614,6 +619,69 @@ function FunnelBar({ label, value, max, color }: { label: string; value: number;
       </div>
       <div style={{ height: 10, borderRadius: 999, background: 'var(--sw-sand-100)', overflow: 'hidden' }}>
         <div style={{ width: `${w}%`, height: '100%', background: color, borderRadius: 999, transition: 'width 400ms' }} />
+      </div>
+    </div>
+  );
+}
+
+/** "Veda's Tasks" — what she is about to do (planned) + a day-grouped diary of
+ *  what she actually did. Pure transparency view over existing records. */
+function TasksPanel({ t }: { t: VedaTasks | null }) {
+  if (!t) return <div style={{ padding: '24px 0', color: 'var(--sw-ink-400)', fontSize: 13.5 }}>Loading Veda's tasks…</div>;
+
+  const dayLabel = (iso: string): string => {
+    const d = new Date(iso);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const day = new Date(d); day.setHours(0, 0, 0, 0);
+    const diff = Math.round((today.getTime() - day.getTime()) / 86_400_000);
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Yesterday';
+    return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+  };
+  const timeIst = (iso: string) => new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' });
+
+  // Group DONE by day, newest day first (items already newest-first from the API).
+  const byDay: { day: string; items: typeof t.done }[] = [];
+  for (const item of t.done) {
+    if (!item.at) continue;
+    const day = dayLabel(item.at);
+    const bucket = byDay.find((b) => b.day === day);
+    if (bucket) bucket.items.push(item); else byDay.push({ day, items: [item] });
+  }
+
+  const row = (label: string, right: string, detail?: string | null, key?: string) => (
+    <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '10px 0', borderBottom: '1px solid var(--sw-sand-100)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+        <span style={{ fontSize: 13.5, color: 'var(--sw-ink-800)' }}>{label}</span>
+        <span style={{ fontSize: 12, color: 'var(--sw-ink-400)', flexShrink: 0 }}>{right}</span>
+      </div>
+      {detail && <div style={{ fontSize: 12, color: 'var(--sw-ink-400)', lineHeight: 1.4 }}>{detail}</div>}
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+      <div>
+        <SectionTitle>Coming up — what Veda will do</SectionTitle>
+        {t.planned.length === 0
+          ? <div style={{ fontSize: 13.5, color: 'var(--sw-ink-400)' }}>Nothing queued right now — Veda is all caught up.</div>
+          : t.planned.map((p) => row(
+              p.label,
+              p.at ? `${dayLabel(p.at)} · ${timeIst(p.at)} IST` : 'as soon as possible',
+              null,
+              p.id,
+            ))}
+      </div>
+      <div>
+        <SectionTitle>Done — Veda's work diary (last 7 days)</SectionTitle>
+        {byDay.length === 0
+          ? <div style={{ fontSize: 13.5, color: 'var(--sw-ink-400)' }}>No completed actions in the last 7 days.</div>
+          : byDay.map((b) => (
+              <div key={b.day} style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--sw-forest-800)', margin: '8px 0 4px' }}>{b.day}</div>
+                {b.items.map((d) => row(d.label, d.at ? `${timeIst(d.at)} IST` : '', d.detail, d.id))}
+              </div>
+            ))}
       </div>
     </div>
   );

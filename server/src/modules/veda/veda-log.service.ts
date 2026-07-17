@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import type { VedaActionLog } from '@prisma/client';
+import { CALLBACK_MARKER } from './channels/slots.util';
 
 export interface WriteLogData {
   type: string;
@@ -40,6 +41,87 @@ export class VedaLogService {
       this.prisma.vedaActionLog.count({ where }),
     ]);
     return { items, total };
+  }
+
+  /**
+   * "Veda's Tasks" — transparency feed. PLANNED = what Veda is about to do
+   * (queued/approved actions + future calls she will dial); DONE = what she
+   * actually did (last 7 days of completed action logs). Derived entirely from
+   * existing records — no separate task store to drift out of sync.
+   */
+  async tasks() {
+    const now = new Date();
+    const since = new Date(Date.now() - 7 * 86_400_000);
+
+    const [queued, calls, done] = await Promise.all([
+      this.prisma.vedaApproval.findMany({
+        where: { status: { in: ['PENDING', 'APPROVED'] }, createdAt: { gte: since } },
+        orderBy: { createdAt: 'asc' },
+        take: 100,
+        select: { id: true, type: true, status: true, draftText: true, createdAt: true },
+      }),
+      this.prisma.discoveryCall.findMany({
+        where: {
+          status: 'SCHEDULED',
+          scheduledAt: { gte: now },
+          // Mirror the voice scheduler's rule so this only lists calls Veda will
+          // actually dial: lead-backed slots or guest-requested callbacks.
+          OR: [
+            { leadId: { not: null }, lead: { confirmedAt: null, closedLostAt: null } },
+            { prepNotes: { contains: CALLBACK_MARKER } },
+          ],
+        },
+        orderBy: { scheduledAt: 'asc' },
+        take: 100,
+        select: { id: true, scheduledAt: true, prepNotes: true, contact: { select: { name: true } } },
+      }),
+      this.prisma.vedaActionLog.findMany({
+        where: { status: 'COMPLETED', createdAt: { gte: since } },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+        select: { id: true, type: true, createdAt: true, approval: { select: { draftText: true } } },
+      }),
+    ]);
+
+    const LABEL: Record<string, string> = {
+      BRAIN: 'Understood a new lead',
+      QUALIFY_LEAD: 'Qualified a lead',
+      EMAIL_SENT: 'Sent an email',
+      WHATSAPP_SENT: 'Sent a WhatsApp message',
+      VOICE_PLACED: 'Placed a voice call',
+      VOICE_COMPLETED: 'Completed a voice call',
+      CHAT_REPLY: 'Replied in live chat',
+      SEND_EMAIL: 'Drafted an email',
+      SEND_WHATSAPP: 'Drafted a WhatsApp message',
+      NURTURE: 'Sent a nurture follow-up',
+      SELF_LEARN: 'Learned a new answer',
+    };
+
+    return {
+      planned: [
+        ...queued.map((a) => ({
+          id: a.id,
+          kind: a.type,
+          label: a.status === 'PENDING' ? `Waiting for approval: ${a.draftText}` : a.draftText,
+          at: null as string | null, // delivered by the executor within ~30s of approval
+          status: a.status,
+        })),
+        ...calls.map((c) => ({
+          id: c.id,
+          kind: 'VOICE_CALL',
+          label: `Call ${c.contact?.name ?? 'guest'}${c.prepNotes?.includes(CALLBACK_MARKER) ? ' (they asked to be called)' : ' for their discovery call'}`,
+          at: c.scheduledAt.toISOString(),
+          status: 'SCHEDULED',
+        })),
+      ],
+      done: done.map((l) => ({
+        id: l.id,
+        kind: l.type,
+        label: LABEL[l.type] ?? l.type,
+        detail: l.approval?.draftText ?? null,
+        at: l.createdAt.toISOString(),
+      })),
+    };
   }
 
   /** ROI dashboard: funnel, cost efficiency, response time, channel + nurture breakdown. */

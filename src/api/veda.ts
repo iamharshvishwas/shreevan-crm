@@ -91,6 +91,18 @@ export interface VedaSummary {
   todayCostUsd: string;
 }
 
+/** One row in the "Veda's Tasks" transparency feed. */
+export interface VedaTask {
+  id: string;
+  kind: string;
+  label: string;
+  detail?: string | null;
+  /** ISO time (scheduled/done). null = "as soon as possible" (executor picks it up). */
+  at: string | null;
+  status?: string;
+}
+export interface VedaTasks { planned: VedaTask[]; done: VedaTask[]; }
+
 export interface VedaCommandResult {
   reply: string;
   actions: string[];
@@ -112,6 +124,7 @@ export const vedaApi = {
   getLogs:        (limit = 30) =>
     api.get<{ items: VedaActionLog[]; total: number }>(`/veda/logs?limit=${limit}`),
   getSummary:     () => api.get<VedaSummary>('/veda/summary'),
+  getTasks:       () => api.get<VedaTasks>('/veda/tasks'),
   pendingCount:   () => api.get<{ count: number }>('/veda/pending-count'),
   command:        (transcript: string) =>
     api.post<VedaCommandResult>('/veda/command', { transcript }),

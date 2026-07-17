@@ -3,6 +3,11 @@ export interface ProposedSlot {
   label: string; // short, <= 20 chars for a WhatsApp button title
 }
 
+/** Marks DiscoveryCalls the guest explicitly asked for ("call me now / at 4pm").
+ *  The voice scheduler dials these even without a Lead — the request itself is
+ *  the business reason. Shared here so brain/scheduler/tasks stay in sync. */
+export const CALLBACK_MARKER = 'Guest requested callback';
+
 const IST_OFFSET_MS = 5.5 * 3600_000;
 
 /**

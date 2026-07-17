@@ -7,7 +7,7 @@ import { VedaApprovalService } from '../veda-approval.service';
 import { VedaConfigService } from '../veda-config.service';
 import { VedaLogService } from '../veda-log.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
-import { proposeSlots } from '../channels/slots.util';
+import { proposeSlots, formatIst, CALLBACK_MARKER } from '../channels/slots.util';
 
 /** How Veda understood an inbound lead — extracted by AI, heuristics as fallback. */
 export interface Intent {
@@ -16,12 +16,19 @@ export interface Intent {
   language: string | null;
   urgency: 'high' | 'medium' | 'low';
   wantsDetails: boolean;
+  /** Guest asked to be CALLED on their phone (now or at a time they gave). */
+  callbackRequested: boolean;
+  /** ISO time they asked to be called at; null = now / unspecified. */
+  callbackAtIso: string | null;
   summary: string;
 }
 
 const LOOKBACK_DAYS = 3;
 const BATCH_PER_TICK = 5;
 const DEDUPE_WINDOW_MS = 48 * 3600_000;
+
+// Same sanity check the voice scheduler applies before dialing.
+const E164 = /^\+[1-9]\d{7,14}$/;
 
 const INTENT_PROMPT = `You are Veda, the AI relationship agent for Shreevan Wellness, a premium Indian wellness-retreat business.
 
@@ -34,9 +41,11 @@ RULES:
 - language: "Hindi", "English", or "Hinglish" — how they write/speak.
 - urgency: high / medium / low from timeline signals.
 - wantsDetails: true if they asked to be SENT details/brochure/pricing/info (on any channel), or if this is an ad/form lead expressing interest in a program.
+- callbackRequested: true ONLY if they asked to be CALLED on their phone (e.g. "call me", "mujhe call karo", "call me at 4pm tomorrow"). A discovery-call INVITE from us does not count.
+- callbackAtIso: if they gave a specific time for the call, resolve it against the current date-time provided and return an ISO 8601 timestamp WITH the +05:30 offset (assume IST unless they clearly state another timezone). If they want the call now / gave no time, return null. Never return a past time.
 - summary: 1-2 plain sentences for the team: who wants what.
 
-Respond ONLY with JSON: { "need", "programInterest", "language", "urgency", "wantsDetails", "summary" }.`;
+Respond ONLY with JSON: { "need", "programInterest", "language", "urgency", "wantsDetails", "callbackRequested", "callbackAtIso", "summary" }.`;
 
 const COMPOSE_PROMPT = `You are Veda, the AI relationship agent for Shreevan Wellness, a premium Indian wellness-retreat business.
 
@@ -120,7 +129,10 @@ export class VedaBrainService {
     const enquiry = await this.prisma.enquiry.findUnique({
       where: { id: enquiryId },
       include: {
-        contact: { include: { identities: true } },
+        contact: { include: {
+          identities: true,
+          leads: { where: { confirmedAt: null, closedLostAt: null }, orderBy: { updatedAt: 'desc' }, take: 1 },
+        } },
         conversations: {
           include: { messages: { orderBy: { occurredAt: 'desc' }, take: 8 } },
           orderBy: { createdAt: 'desc' },
@@ -145,13 +157,6 @@ export class VedaBrainService {
     if (intent.language && !enquiry.contact.language) {
       await this.prisma.contact.update({ where: { id: enquiry.contactId }, data: { language: intent.language } }).catch(() => undefined);
     }
-    await this.prisma.internalNote.create({
-      data: {
-        enquiryId,
-        authorName: 'Veda',
-        body: `🧠 ${intent.summary} · Need: ${intent.need} · Urgency: ${intent.urgency}${intent.programInterest ? ` · Interest: ${intent.programInterest}` : ''}`,
-      },
-    }).catch(() => undefined);
 
     // Decide + queue outreach.
     const email = enquiry.contact.identities.find((i) => i.channel === Channel.EMAIL)?.handle ?? null;
@@ -159,26 +164,42 @@ export class VedaBrainService {
     const cfg = await this.config.get();
     const actions: string[] = [];
 
+    // "Call me (now | at <time>)" — book the call FIRST so the note and the
+    // WhatsApp confirmation below can tell the guest the truth about it.
+    const callbackAt = await this.scheduleCallback(enquiry.contactId, phone, enquiry.contact.leads[0]?.id ?? null, intent);
+    if (callbackAt) actions.push(`callback@${callbackAt.toISOString()}`);
+
+    await this.prisma.internalNote.create({
+      data: {
+        enquiryId,
+        authorName: 'Veda',
+        body: `🧠 ${intent.summary} · Need: ${intent.need} · Urgency: ${intent.urgency}${intent.programInterest ? ` · Interest: ${intent.programInterest}` : ''}${callbackAt ? ` · 📞 Callback booked: ${formatIst(callbackAt.toISOString())}` : ''}`,
+      },
+    }).catch(() => undefined);
+
     const wantEmail = email && cfg.steps.SEND_EMAIL.enabled
       && (!conversationalReplyHandled || (intent.wantsDetails && enquiry.channel !== Channel.EMAIL));
     const wantWa = phone && cfg.steps.SEND_WHATSAPP.enabled
-      && (!conversationalReplyHandled || (intent.wantsDetails && enquiry.channel !== Channel.WHATSAPP));
+      && (!conversationalReplyHandled || callbackAt || (intent.wantsDetails && enquiry.channel !== Channel.WHATSAPP));
 
+    let emailQueued = false;
     if (wantEmail && !(await this.alreadyQueued('SEND_EMAIL', 'Enquiry', enquiryId))) {
       const draft = await this.composeEmail(enquiry.contact.name, intent, sourceText);
       if (draft) {
         await this.queue('SEND_EMAIL', 'Enquiry', enquiryId, `Email to ${enquiry.contact.name} <${email}> — "${draft.subject}"`,
           { to: email, subject: draft.subject, body: draft.body }, intent, cfg.steps.BRAIN.autoApprove);
         actions.push(`email→${email}`);
+        emailQueued = true;
       }
     }
 
     if (wantWa && !(await this.alreadyQueued('SEND_WHATSAPP', 'Enquiry', enquiryId))) {
       // Body is used inside the 24h window; outside it the executor sends the
       // pre-approved greeting template automatically. Slot buttons ride along
-      // in-window so the guest can book a discovery call in one tap.
-      const slots = proposeSlots();
-      const waBody = this.waBody(enquiry.contact.name, intent);
+      // in-window so the guest can book a discovery call in one tap — skipped
+      // when a callback is already booked (one clear next step, not two).
+      const slots = callbackAt ? [] : proposeSlots();
+      const waBody = this.waBody(enquiry.contact.name, intent, { emailQueued, callbackAt });
       await this.queue('SEND_WHATSAPP', 'Enquiry', enquiryId, `WhatsApp to ${enquiry.contact.name} (${phone})`,
         { to: phone, contactId: enquiry.contactId, name: enquiry.contact.name, body: waBody, slots: slots.map((s) => ({ iso: s.iso, label: s.label })) },
         intent, cfg.steps.BRAIN.autoApprove);
@@ -200,7 +221,10 @@ export class VedaBrainService {
 
     const call = await this.prisma.discoveryCall.findUnique({
       where: { id: discoveryCallId },
-      include: { contact: { include: { identities: true } } },
+      include: { contact: { include: {
+        identities: true,
+        leads: { where: { confirmedAt: null, closedLostAt: null }, orderBy: { updatedAt: 'desc' }, take: 1 },
+      } } },
     });
     if (!call?.contact) return;
 
@@ -209,9 +233,14 @@ export class VedaBrainService {
 
     const intent = await this.extractIntent(sourceText, call.contact.name);
     const email = call.contact.identities.find((i) => i.channel === Channel.EMAIL)?.handle ?? null;
-    const phone = call.contact.identities.find((i) => i.channel === Channel.WHATSAPP)?.handle ?? null;
+    const phone = call.contact.identities.find((i) => i.channel === Channel.WHATSAPP)?.handle
+      ?? call.contact.identities.find((i) => i.channel === Channel.PHONE)?.handle ?? null;
     const cfg = await this.config.get();
     const actions: string[] = [];
+
+    // Caller asked (during the call) to be called again at a specific time.
+    const callbackAt = await this.scheduleCallback(call.contactId!, phone, call.contact.leads[0]?.id ?? null, intent);
+    if (callbackAt) actions.push(`callback@${callbackAt.toISOString()}`);
 
     if (email && cfg.steps.SEND_EMAIL.enabled && !(await this.alreadyQueued('SEND_EMAIL', 'DiscoveryCall', discoveryCallId))) {
       const draft = await this.composeEmail(call.contact.name, intent, `They just finished a phone call with Veda. Call summary/transcript:\n${sourceText}`);
@@ -222,9 +251,9 @@ export class VedaBrainService {
       }
     }
     if (phone && cfg.steps.SEND_WHATSAPP.enabled && !(await this.alreadyQueued('SEND_WHATSAPP', 'DiscoveryCall', discoveryCallId))) {
-      const slots = proposeSlots();
+      const slots = callbackAt ? [] : proposeSlots();
       await this.queue('SEND_WHATSAPP', 'DiscoveryCall', discoveryCallId, `Post-call WhatsApp to ${call.contact.name} (${phone})`,
-        { to: phone, contactId: call.contactId, name: call.contact.name, body: this.waBody(call.contact.name, intent), slots: slots.map((s) => ({ iso: s.iso, label: s.label })) },
+        { to: phone, contactId: call.contactId, name: call.contact.name, body: this.waBody(call.contact.name, intent, { emailQueued: actions.some((a) => a.startsWith('email')), callbackAt }), slots: slots.map((s) => ({ iso: s.iso, label: s.label })) },
         intent, cfg.steps.BRAIN.autoApprove);
       actions.push(`whatsapp→${phone}`);
     }
@@ -247,7 +276,7 @@ export class VedaBrainService {
           jsonMode: true, temperature: 0.2,
           messages: [
             { role: 'system', content: INTENT_PROMPT },
-            { role: 'user', content: `Guest name: ${contactName}\n\nWhat they wrote/said:\n${text.slice(0, 6000)}` },
+            { role: 'user', content: `Current date-time: ${new Date().toISOString()} (IST: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })})\nGuest name: ${contactName}\n\nWhat they wrote/said:\n${text.slice(0, 6000)}` },
           ],
         });
         const parsed = this.ai.parseJson<Partial<Intent>>(result.message.content);
@@ -258,6 +287,8 @@ export class VedaBrainService {
             language: parsed.language ?? null,
             urgency: (['high', 'medium', 'low'] as const).includes(parsed.urgency as Intent['urgency']) ? (parsed.urgency as Intent['urgency']) : 'medium',
             wantsDetails: !!parsed.wantsDetails,
+            callbackRequested: !!parsed.callbackRequested,
+            callbackAtIso: typeof parsed.callbackAtIso === 'string' && !isNaN(new Date(parsed.callbackAtIso).getTime()) ? parsed.callbackAtIso : null,
             summary: parsed.summary,
           };
         }
@@ -324,10 +355,48 @@ export class VedaBrainService {
     };
   }
 
-  private waBody(name: string, intent: Intent): string {
+  /** Truthful WhatsApp body — only claims what actually got queued/booked. */
+  private waBody(name: string, intent: Intent, opts: { emailQueued: boolean; callbackAt: Date | null }): string {
     const first = name.trim().split(/\s+/)[0] || 'there';
     const interest = intent.programInterest ? ` about ${intent.programInterest}` : '';
-    return `Namaste ${first} 🌿 This is Veda from Shreevan Wellness — thank you for reaching out${interest}. I've sent the details you asked for. Would a short discovery call help? Pick a time below, or just reply here.`;
+    const parts = [`Namaste ${first} 🌿 This is Veda from Shreevan Wellness — thank you for reaching out${interest}.`];
+    if (opts.callbackAt) parts.push(`Your call is booked — I'll ring you around ${formatIst(opts.callbackAt.toISOString())}.`);
+    if (opts.emailQueued) parts.push(`I've emailed you the details you asked for.`);
+    if (!opts.callbackAt) parts.push(`Would a short discovery call help? Pick a time below, or just reply here.`);
+    return parts.join(' ');
+  }
+
+  /**
+   * "Call me (now | at <time>)" → create the DiscoveryCall Veda must remember.
+   * The voice scheduler dials it when due (even without a Lead — the guest's
+   * explicit request is the business reason); a "now" during quiet hours is
+   * deferred to the first minute after they end so nobody's phone rings at 2am.
+   * Returns the booked time, or null when nothing was booked.
+   */
+  private async scheduleCallback(contactId: string, phone: string | null, leadId: string | null, intent: Intent): Promise<Date | null> {
+    if (!intent.callbackRequested || !phone) return null;
+    const clean = phone.replace(/\s|-/g, '');
+    if (!E164.test(clean)) return null;
+
+    // One open callback per contact — asking twice must not book two calls.
+    const open = await this.prisma.discoveryCall.findFirst({
+      where: { contactId, status: 'SCHEDULED', prepNotes: { contains: CALLBACK_MARKER } },
+      select: { id: true },
+    });
+    if (open) return null;
+
+    const cfg = await this.config.get();
+    let at = intent.callbackAtIso ? new Date(intent.callbackAtIso) : new Date();
+    if (isNaN(at.getTime()) || at.getTime() < Date.now() - 5 * 60_000) at = new Date();
+    if (!intent.callbackAtIso) at = deferOutOfQuietHours(at, cfg.quietHoursStart, cfg.quietHoursEnd, cfg.quietHoursTimezone);
+
+    await this.prisma.discoveryCall.create({
+      data: {
+        contactId, leadId, scheduledAt: at, timezone: cfg.quietHoursTimezone, status: 'SCHEDULED',
+        prepNotes: `${CALLBACK_MARKER} — ${intent.callbackAtIso ? `asked for ${formatIst(at.toISOString())}` : 'asked to be called now'}. ${intent.summary}`.slice(0, 500),
+      },
+    });
+    return at;
   }
 
   // ---- acting ----
@@ -366,6 +435,24 @@ export class VedaBrainService {
   }
 }
 
+/** If `at` falls inside quiet hours, push it to the first minute after they
+ *  end (timezone-aware via Intl, no date-construction in the target tz). */
+export function deferOutOfQuietHours(at: Date, startHHMM: string, endHHMM: string, tz: string): Date {
+  try {
+    const fmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz });
+    const cur = fmt.format(at); // "HH:MM"
+    const inQuiet = startHHMM <= endHHMM ? cur >= startHHMM && cur < endHHMM : cur >= startHHMM || cur < endHHMM;
+    if (!inQuiet) return at;
+    const [ch, cm] = cur.split(':').map(Number);
+    const [eh, em] = endHHMM.split(':').map(Number);
+    let diffMin = eh * 60 + em - (ch * 60 + cm);
+    if (diffMin <= 0) diffMin += 24 * 60;
+    return new Date(at.getTime() + diffMin * 60_000);
+  } catch {
+    return at;
+  }
+}
+
 /** No-AI fallback: regex-level understanding so the pipeline still works. */
 export function heuristicIntent(text: string): Intent {
   const t = text.toLowerCase();
@@ -383,8 +470,12 @@ export function heuristicIntent(text: string): Intent {
     : programInterest || wantsDetails ? 'PROGRAM_INFO'
     : 'OTHER';
   const language = /[ऀ-ॿ]/.test(text) ? 'Hindi' : /\b(hai|nahi|chahiye|kitna|bhej|karna|krna)\b/.test(t) ? 'Hinglish' : 'English';
+  // "call me / call karo / phone karo / callback" — without AI we can't parse a
+  // requested time reliably, so heuristic callbacks are treated as "call now".
+  const callbackRequested = /\b(call me|call back|callback|ring me)\b/.test(t) || /(call|phone)\s*(kar|krd|kijiye|karna|karo|krna)/.test(t) || /(mujhe|muje)\s+(call|phone)/.test(t);
   return {
     need, programInterest, language, urgency: 'medium', wantsDetails,
+    callbackRequested, callbackAtIso: null,
     summary: `Lead${programInterest ? ` interested in ${programInterest}` : ''} — ${need === 'OTHER' ? 'general enquiry' : need.toLowerCase().replace('_', ' ')}.`,
   };
 }
