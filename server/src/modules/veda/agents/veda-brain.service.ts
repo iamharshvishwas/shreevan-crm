@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { Channel, MessageDirection } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { OpenAiProvider } from '../ai/openai.provider';
+import { RedactionService } from '../ai/redaction.service';
 import { VedaApprovalService } from '../veda-approval.service';
 import { VedaConfigService } from '../veda-config.service';
 import { VedaLogService } from '../veda-log.service';
@@ -86,6 +87,7 @@ export class VedaBrainService {
     private readonly config: VedaConfigService,
     private readonly logs: VedaLogService,
     private readonly knowledge: KnowledgeService,
+    private readonly redaction: RedactionService,
   ) {}
 
   @Cron(CronExpression.EVERY_30_SECONDS)
@@ -148,7 +150,15 @@ export class VedaBrainService {
     // Someone (Veda chat/email/WhatsApp auto-reply) already answered in-thread?
     const conversationalReplyHandled = messages.some((m) => m.direction === MessageDirection.OUTBOUND);
 
-    const intent = await this.extractIntent(sourceText, enquiry.contact.name);
+    // Domain rule: NEVER let health/medical detail reach an AI prompt or a
+    // guest-facing message. A lead's own text (chat/form/email/WhatsApp) can
+    // contain it — unlike call transcripts, which are already redacted before
+    // storage — so redact once here, upstream of both the intent AI call and
+    // the compose AI call. safeSourceText only touches the network when AI is
+    // actually configured; the heuristic fallback below always uses the raw
+    // text instead, since it never leaves this process.
+    const safeSourceText = await this.prepareSafeText(sourceText);
+    const intent = await this.extractIntent(sourceText, safeSourceText, enquiry.contact.name);
 
     // Record the understanding: fill fields the team hasn't set + a note in the thread.
     if (intent.programInterest && !enquiry.programInterest) {
@@ -184,7 +194,7 @@ export class VedaBrainService {
 
     let emailQueued = false;
     if (wantEmail && !(await this.alreadyQueued('SEND_EMAIL', 'Enquiry', enquiryId))) {
-      const draft = await this.composeEmail(enquiry.contact.name, intent, sourceText);
+      const draft = await this.composeEmail(enquiry.contact.name, intent, safeSourceText);
       if (draft) {
         await this.queue('SEND_EMAIL', 'Enquiry', enquiryId, `Email to ${enquiry.contact.name} <${email}> — "${draft.subject}"`,
           { to: email, subject: draft.subject, body: draft.body }, intent, cfg.steps.BRAIN.autoApprove);
@@ -228,10 +238,13 @@ export class VedaBrainService {
     });
     if (!call?.contact) return;
 
+    // call.summary / call.transcriptRedacted are already health-redacted before
+    // storage (voice.service.ts), so this text is safe as both the heuristic
+    // and the AI-prompt copy — no further redaction needed here.
     const sourceText = [call.summary, call.transcriptRedacted].filter(Boolean).join('\n\n').slice(0, 6000);
     if (!sourceText.trim()) return;
 
-    const intent = await this.extractIntent(sourceText, call.contact.name);
+    const intent = await this.extractIntent(sourceText, sourceText, call.contact.name);
     const email = call.contact.identities.find((i) => i.channel === Channel.EMAIL)?.handle ?? null;
     const phone = call.contact.identities.find((i) => i.channel === Channel.WHATSAPP)?.handle
       ?? call.contact.identities.find((i) => i.channel === Channel.PHONE)?.handle ?? null;
@@ -243,7 +256,7 @@ export class VedaBrainService {
     if (callbackAt) actions.push(`callback@${callbackAt.toISOString()}`);
 
     if (email && cfg.steps.SEND_EMAIL.enabled && !(await this.alreadyQueued('SEND_EMAIL', 'DiscoveryCall', discoveryCallId))) {
-      const draft = await this.composeEmail(call.contact.name, intent, `They just finished a phone call with Veda. Call summary/transcript:\n${sourceText}`);
+      const draft = await this.composeEmail(call.contact.name, intent, `They just finished a phone call with Veda. Call summary/transcript (already health-redacted):\n${sourceText}`);
       if (draft) {
         await this.queue('SEND_EMAIL', 'DiscoveryCall', discoveryCallId, `Post-call email to ${call.contact.name} <${email}> — "${draft.subject}"`,
           { to: email, subject: draft.subject, body: draft.body }, intent, cfg.steps.BRAIN.autoApprove);
@@ -267,16 +280,30 @@ export class VedaBrainService {
 
   // ---- understanding ----
 
+  /**
+   * Redact health/medical detail before text reaches an AI prompt. Only calls
+   * out to AI when a caller is actually about to use AI at all (isConfigured) —
+   * when AI is off, the Brain runs fully on local heuristics, which never
+   * transmit the text anywhere, so there is nothing to protect against.
+   */
+  private async prepareSafeText(text: string): Promise<string> {
+    if (!this.ai.isConfigured()) return text;
+    const { text: safe } = await this.redaction.redact(text);
+    return safe;
+  }
+
   /** AI intent extraction with a deterministic heuristic fallback, so the Brain
-   *  still acts (with less nuance) if the AI provider is down/unconfigured. */
-  private async extractIntent(text: string, contactName: string): Promise<Intent> {
+   *  still acts (with less nuance) if the AI provider is down/unconfigured.
+   *  `rawText` feeds the heuristic path (local-only, never transmitted);
+   *  `safeText` (pre-redacted) feeds the AI prompt. */
+  private async extractIntent(rawText: string, safeText: string, contactName: string): Promise<Intent> {
     if (this.ai.isConfigured()) {
       try {
         const result = await this.ai.chat({
           jsonMode: true, temperature: 0.2,
           messages: [
             { role: 'system', content: INTENT_PROMPT },
-            { role: 'user', content: `Current date-time: ${new Date().toISOString()} (IST: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })})\nGuest name: ${contactName}\n\nWhat they wrote/said:\n${text.slice(0, 6000)}` },
+            { role: 'user', content: `Current date-time: ${new Date().toISOString()} (IST: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })})\nGuest name: ${contactName}\n\nWhat they wrote/said:\n${safeText.slice(0, 6000)}` },
           ],
         });
         const parsed = this.ai.parseJson<Partial<Intent>>(result.message.content);
@@ -296,7 +323,7 @@ export class VedaBrainService {
         this.logger.warn(`Intent extraction failed, using heuristics: ${(e as Error).message}`);
       }
     }
-    return heuristicIntent(text);
+    return heuristicIntent(rawText);
   }
 
   // ---- composing ----
