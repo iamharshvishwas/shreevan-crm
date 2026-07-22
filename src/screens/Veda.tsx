@@ -731,6 +731,25 @@ function AnalyticsPanel({ a }: { a: VedaAnalytics | null }) {
         ))}
       </div>
 
+      <SectionTitle>Reply rate — last 30 days</SectionTitle>
+      <div style={{ marginBottom: 24 }}>
+        {a.replyRate.sent === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--sw-ink-400)' }}>No emails/WhatsApp sent yet in this window.</div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
+              <span style={{ fontSize: 24, fontWeight: 700, fontFamily: 'var(--font-heading)', color: 'var(--sw-forest-800)' }}>{a.replyRate.rate}%</span>
+              <span style={{ fontSize: 12.5, color: 'var(--sw-ink-400)' }}>
+                {a.replyRate.replied} of {a.replyRate.sent} messages got a reply from the guest afterward
+              </span>
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--sw-ink-400)' }}>
+              A proxy signal for whether Veda's autonomous messages are landing well — not every message needs a reply, so treat this as a trend to watch, not a target to hit.
+            </div>
+          </>
+        )}
+      </div>
+
       <SectionTitle>Nurture sequences</SectionTitle>
       <div style={{ display: 'flex', gap: 18, fontSize: 13 }}>
         <span><b style={{ color: '#0d9488' }}>{a.nurture.active}</b> <span style={{ color: 'var(--sw-ink-400)' }}>active</span></span>

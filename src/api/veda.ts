@@ -42,6 +42,10 @@ export interface VedaAnalytics {
   channels: { email: number; whatsapp: number; voice: number; chat: number };
   nurture: { active: number; completed: number; stopped: number };
   knowledgeEntries: number;
+  /** Of the emails/WhatsApp Veda sent in the last 30 days, how many got an
+   *  actual reply afterward — a feedback signal on whether her autonomous
+   *  messages are landing well. */
+  replyRate: { sent: number; replied: number; rate: number };
 }
 
 export interface KnowledgeEntry {

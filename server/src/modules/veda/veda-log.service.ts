@@ -128,7 +128,7 @@ export class VedaLogService {
   async analytics() {
     const [
       totalLeads, qualified, discoveryCalls, completedCalls, bookings,
-      costAgg, byType, chatAgg, nurture, knowledge,
+      costAgg, byType, chatAgg, nurture, knowledge, replyRate,
     ] = await Promise.all([
       this.prisma.lead.count(),
       this.prisma.vedaActionLog.count({ where: { type: 'QUALIFY_LEAD', status: 'COMPLETED' } }),
@@ -140,6 +140,7 @@ export class VedaLogService {
       this.prisma.vedaActionLog.aggregate({ where: { type: 'CHAT_REPLY', status: 'COMPLETED' }, _avg: { durationMs: true } }),
       this.prisma.nurtureEnrollment.groupBy({ by: ['status'], _count: { _all: true } }),
       this.prisma.vedaKnowledge.count({ where: { active: true } }),
+      this.replyRate(),
     ]);
 
     const totalCostUsd = (costAgg._sum.costUsdMicro ?? 0) / 1_000_000;
@@ -169,7 +170,51 @@ export class VedaLogService {
       },
       nurture: { active: nurtureByStatus['ACTIVE'] ?? 0, completed: nurtureByStatus['COMPLETED'] ?? 0, stopped: nurtureByStatus['STOPPED'] ?? 0 },
       knowledgeEntries: knowledge,
+      replyRate,
     };
+  }
+
+  /**
+   * Feedback signal: of the emails/WhatsApp messages Veda sent in the last 30
+   * days, how many got an actual reply from the guest afterward? A proxy for
+   * "are Veda's autonomous messages landing well" — not perfect (a guest may
+   * reply about something unrelated, or need no reply at all), but far better
+   * than no signal. Derived entirely from existing logs/messages.
+   */
+  private async replyRate(days = 30): Promise<{ sent: number; replied: number; rate: number }> {
+    const since = new Date(Date.now() - days * 86_400_000);
+    const sentLogs = await this.prisma.vedaActionLog.findMany({
+      where: { type: { in: ['EMAIL_SENT', 'WHATSAPP_SENT'] }, status: 'COMPLETED', createdAt: { gte: since }, entityId: { not: null } },
+      select: { entityType: true, entityId: true, createdAt: true },
+    });
+    if (!sentLogs.length) return { sent: 0, replied: 0, rate: 0 };
+
+    // Each log's entityId is an Enquiry/Lead/DiscoveryCall id depending on which
+    // flow triggered the send — resolve all three to the underlying contactId.
+    const idsByType = { Enquiry: [] as string[], Lead: [] as string[], DiscoveryCall: [] as string[] };
+    for (const l of sentLogs) if (l.entityType && l.entityType in idsByType) idsByType[l.entityType as keyof typeof idsByType].push(l.entityId!);
+
+    const [enquiries, leads, calls] = await Promise.all([
+      this.prisma.enquiry.findMany({ where: { id: { in: idsByType.Enquiry } }, select: { id: true, contactId: true } }),
+      this.prisma.lead.findMany({ where: { id: { in: idsByType.Lead } }, select: { id: true, contactId: true } }),
+      this.prisma.discoveryCall.findMany({ where: { id: { in: idsByType.DiscoveryCall } }, select: { id: true, contactId: true } }),
+    ]);
+    const contactByEntity = new Map<string, string>();
+    for (const e of enquiries) contactByEntity.set(e.id, e.contactId);
+    for (const l of leads) contactByEntity.set(l.id, l.contactId);
+    for (const c of calls) if (c.contactId) contactByEntity.set(c.id, c.contactId);
+
+    let replied = 0;
+    for (const log of sentLogs) {
+      const contactId = contactByEntity.get(log.entityId!);
+      if (!contactId) continue;
+      const reply = await this.prisma.message.findFirst({
+        where: { conversation: { contactId }, direction: 'INBOUND', occurredAt: { gt: log.createdAt } },
+        select: { id: true },
+      });
+      if (reply) replied++;
+    }
+    return { sent: sentLogs.length, replied, rate: pct(replied, sentLogs.length) };
   }
 
   async summary() {
