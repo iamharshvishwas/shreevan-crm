@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Param, Post, Query, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { randomUUID } from 'node:crypto';
@@ -31,6 +31,8 @@ function pickIdentity(identities: { channel: Channel; handle: string }[] | undef
 @Controller('chat')
 @RequireScreens('livechat')
 export class ChatController {
+  private readonly logger = new Logger(ChatController.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ingestion: IngestionService,
@@ -59,66 +61,86 @@ export class ChatController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post('message')
   async message(@Body() dto: ChatMessageDto): Promise<{ reply: string; conversationId?: string; handover?: boolean }> {
-    const connectionId = await this.getConnectionId();
+    // This is a public, visitor-facing endpoint: it must NEVER surface a 500.
+    // Any unexpected failure (a provider timeout, a transient DB error) is
+    // logged for diagnosis and degraded to the same graceful fallback the
+    // visitor would see if Veda were simply unavailable.
+    let conversationId: string | undefined;
+    try {
+      const connectionId = await this.getConnectionId();
 
-    // The widget's pre-chat form is optional, and Veda's own prompt asks
-    // visitors to share contact details conversationally — fall back to
-    // picking an email/phone out of the message text itself so those replies
-    // aren't lost (this feeds the same enrichContact() pipeline as the form).
-    const extracted = extractContactFromText(dto.message);
+      // The widget's pre-chat form is optional, and Veda's own prompt asks
+      // visitors to share contact details conversationally — fall back to
+      // picking an email/phone out of the message text itself so those replies
+      // aren't lost (this feeds the same enrichContact() pipeline as the form).
+      const extracted = extractContactFromText(dto.message);
 
-    const ev: NormalizedInboundEvent = {
-      provider: Channel.WEBSITE_CHAT,
-      connectionId,
-      externalEventId: randomUUID(),
-      externalMessageId: randomUUID(),
-      externalConversationId: dto.sessionId,
-      direction: 'inbound',
-      sender: {
-        providerIdentityId: dto.sessionId,
-        displayName: dto.name?.trim() || 'Website visitor',
-        email: dto.email?.trim() || extracted.email,
-        phone: dto.phone?.trim() || extracted.phone,
-      },
-      message: { type: 'text', text: dto.message },
-      attribution: { firstTouchSource: Channel.WEBSITE_CHAT, campaign: null },
-      occurredAt: new Date().toISOString(),
-      rawPayload: { sessionId: dto.sessionId },
-    };
-
-    const result = await this.ingestion.ingest(ev);
-    if (!result.conversationId) return { reply: FALLBACK_REPLY };
-
-    // If a human has taken this chat, don't let Veda reply — the widget will
-    // poll /chat/messages and show the agent's replies as they come.
-    const convo = await this.prisma.conversation.findUnique({
-      where: { id: result.conversationId },
-      select: { handoverToHuman: true },
-    });
-    if (convo?.handoverToHuman) return { reply: '', handover: true, conversationId: result.conversationId };
-
-    const { reply } = await this.chat.respond(result.conversationId);
-    if (!reply) {
-      // Veda couldn't reply (disabled / unconfigured / errored). The widget only
-      // renders polled OUTBOUND messages — without persisting the fallback the
-      // visitor sees silence, and staff never see what the visitor was told.
-      await this.prisma.message.create({
-        data: {
-          conversationId: result.conversationId,
-          direction: MessageDirection.OUTBOUND,
-          channel: Channel.WEBSITE_CHAT,
-          authorName: 'Veda',
-          body: FALLBACK_REPLY,
-          delivery: DeliveryState.SENT,
-          occurredAt: new Date(),
+      const ev: NormalizedInboundEvent = {
+        provider: Channel.WEBSITE_CHAT,
+        connectionId,
+        externalEventId: randomUUID(),
+        externalMessageId: randomUUID(),
+        externalConversationId: dto.sessionId,
+        direction: 'inbound',
+        sender: {
+          providerIdentityId: dto.sessionId,
+          displayName: dto.name?.trim() || 'Website visitor',
+          email: dto.email?.trim() || extracted.email,
+          phone: dto.phone?.trim() || extracted.phone,
         },
-      });
-      await this.prisma.conversation.update({
+        message: { type: 'text', text: dto.message },
+        attribution: { firstTouchSource: Channel.WEBSITE_CHAT, campaign: null },
+        occurredAt: new Date().toISOString(),
+        rawPayload: { sessionId: dto.sessionId },
+      };
+
+      const result = await this.ingestion.ingest(ev);
+      if (!result.conversationId) return { reply: FALLBACK_REPLY };
+      conversationId = result.conversationId;
+
+      // If a human has taken this chat, don't let Veda reply — the widget will
+      // poll /chat/messages and show the agent's replies as they come.
+      const convo = await this.prisma.conversation.findUnique({
         where: { id: result.conversationId },
-        data: { updatedAt: new Date(), needsAttention: true, attentionReason: 'Veda could not reply — visitor is waiting on the team' },
+        select: { handoverToHuman: true },
       });
+      if (convo?.handoverToHuman) return { reply: '', handover: true, conversationId: result.conversationId };
+
+      const { reply } = await this.chat.respond(result.conversationId);
+      if (!reply) {
+        // Veda couldn't reply (disabled / unconfigured / errored). The widget only
+        // renders polled OUTBOUND messages — without persisting the fallback the
+        // visitor sees silence, and staff never see what the visitor was told.
+        await this.persistFallback(result.conversationId);
+      }
+      return { reply: reply ?? FALLBACK_REPLY, conversationId: result.conversationId };
+    } catch (e) {
+      this.logger.error(`chat/message failed (session ${dto.sessionId}): ${(e as Error).stack ?? (e as Error).message}`);
+      // Best-effort: if the conversation exists, record the fallback + flag it so
+      // staff pick it up. Never let this masking step throw either.
+      if (conversationId) await this.persistFallback(conversationId).catch(() => undefined);
+      return { reply: FALLBACK_REPLY, conversationId };
     }
-    return { reply: reply ?? FALLBACK_REPLY, conversationId: result.conversationId };
+  }
+
+  /** Record the fallback reply as an OUTBOUND message and flag the conversation
+   *  for staff, so a visitor who couldn't be answered by Veda is never dropped. */
+  private async persistFallback(conversationId: string): Promise<void> {
+    await this.prisma.message.create({
+      data: {
+        conversationId,
+        direction: MessageDirection.OUTBOUND,
+        channel: Channel.WEBSITE_CHAT,
+        authorName: 'Veda',
+        body: FALLBACK_REPLY,
+        delivery: DeliveryState.SENT,
+        occurredAt: new Date(),
+      },
+    });
+    await this.prisma.conversation.update({
+      where: { id: conversationId },
+      data: { updatedAt: new Date(), needsAttention: true, attentionReason: 'Veda could not reply — visitor is waiting on the team' },
+    });
   }
 
   /** Widget polls this for new agent/Veda messages (so human takeover reaches the visitor). */
